@@ -6,5 +6,20 @@ require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR 
 api_response(true, 'API JevzGames Infra', [
     'endpoints' => [
         url('/api/status/'),
+        url('/api/game-info/'),
+        url('/api/version-check/'),
+        url('/api/oauth/device-code/'),
+        url('/api/oauth/token/'),
+        url('/api/user-profile/'),
+        url('/api/game-database/status/'),
+        url('/api/player-data/save/'),
+        url('/api/player-data/get/'),
+        url('/api/achievements/list/'),
+        url('/api/achievements/progress/'),
+        url('/api/achievements/unlock/'),
+        url('/api/cloud-saves/config/'),
+        url('/api/cloud-saves/list/'),
+        url('/api/cloud-saves/save/'),
+        url('/api/cloud-saves/get/'),
     ],
 ]);

@@ -173,6 +173,133 @@ CREATE TABLE IF NOT EXISTS game_api_keys (
     CONSTRAINT fk_game_api_keys_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS game_oauth_device_codes (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NOT NULL,
+    public_key VARCHAR(120) NOT NULL,
+    device_code_hash VARCHAR(128) NOT NULL UNIQUE,
+    user_code_hash VARCHAR(128) NOT NULL UNIQUE,
+    user_code_preview VARCHAR(20) NOT NULL,
+    status ENUM('pending', 'authorized', 'denied', 'expired') NOT NULL DEFAULT 'pending',
+    approved_user_id INT UNSIGNED NULL,
+    expires_at DATETIME NOT NULL,
+    last_polled_at DATETIME NULL,
+    authorized_at DATETIME NULL,
+    token_issued_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_game_oauth_device_codes_game (game_id),
+    INDEX idx_game_oauth_device_codes_status (status),
+    INDEX idx_game_oauth_device_codes_expires (expires_at),
+    CONSTRAINT fk_game_oauth_device_codes_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+    CONSTRAINT fk_game_oauth_device_codes_user FOREIGN KEY (approved_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS game_oauth_tokens (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    device_code_id BIGINT UNSIGNED NULL,
+    access_token_hash VARCHAR(128) NOT NULL UNIQUE,
+    status ENUM('active', 'revoked') NOT NULL DEFAULT 'active',
+    expires_at DATETIME NOT NULL,
+    last_used_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at DATETIME NULL,
+    INDEX idx_game_oauth_tokens_game (game_id),
+    INDEX idx_game_oauth_tokens_user (user_id),
+    INDEX idx_game_oauth_tokens_status (status),
+    CONSTRAINT fk_game_oauth_tokens_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+    CONSTRAINT fk_game_oauth_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_game_oauth_tokens_device FOREIGN KEY (device_code_id) REFERENCES game_oauth_device_codes(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS game_achievements (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NOT NULL,
+    code VARCHAR(100) NOT NULL,
+    title VARCHAR(160) NOT NULL,
+    description TEXT NULL,
+    points INT UNSIGNED NOT NULL DEFAULT 0,
+    goal_value DECIMAL(12,2) NOT NULL DEFAULT 1.00,
+    is_secret TINYINT(1) NOT NULL DEFAULT 0,
+    status ENUM('active', 'hidden', 'disabled') NOT NULL DEFAULT 'active',
+    reward_json LONGTEXT NULL,
+    config_json LONGTEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_game_achievements_game_code (game_id, code),
+    INDEX idx_game_achievements_game (game_id),
+    INDEX idx_game_achievements_status (status),
+    CONSTRAINT fk_game_achievements_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_achievements (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NOT NULL,
+    achievement_id BIGINT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    progress_value DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    progress_json LONGTEXT NULL,
+    unlocked_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_achievements_user_achievement (user_id, achievement_id),
+    INDEX idx_user_achievements_game_user (game_id, user_id),
+    INDEX idx_user_achievements_unlocked (unlocked_at),
+    CONSTRAINT fk_user_achievements_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_achievements_achievement FOREIGN KEY (achievement_id) REFERENCES game_achievements(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_achievements_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS game_player_data (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    data_key VARCHAR(120) NOT NULL,
+    data_json LONGTEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_game_player_data_scope (game_id, user_id, data_key),
+    INDEX idx_game_player_data_user (user_id),
+    CONSTRAINT fk_game_player_data_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+    CONSTRAINT fk_game_player_data_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS game_cloud_save_configs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NOT NULL,
+    config_key VARCHAR(100) NOT NULL,
+    name VARCHAR(160) NOT NULL,
+    max_slots INT UNSIGNED NOT NULL DEFAULT 3,
+    max_bytes INT UNSIGNED NOT NULL DEFAULT 65536,
+    auto_sync TINYINT(1) NOT NULL DEFAULT 1,
+    status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
+    metadata_json LONGTEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_game_cloud_save_configs_game_key (game_id, config_key),
+    INDEX idx_game_cloud_save_configs_game (game_id),
+    CONSTRAINT fk_game_cloud_save_configs_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_cloud_saves (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    config_id BIGINT UNSIGNED NOT NULL,
+    slot INT UNSIGNED NOT NULL DEFAULT 1,
+    save_json LONGTEXT NOT NULL,
+    size_bytes INT UNSIGNED NOT NULL DEFAULT 0,
+    metadata_json LONGTEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_cloud_saves_scope (game_id, user_id, config_id, slot),
+    INDEX idx_user_cloud_saves_user (user_id),
+    CONSTRAINT fk_user_cloud_saves_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_cloud_saves_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_cloud_saves_config FOREIGN KEY (config_id) REFERENCES game_cloud_save_configs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS public_profiles (
     user_id INT UNSIGNED PRIMARY KEY,
     display_name VARCHAR(120) NULL,
@@ -182,6 +309,103 @@ CREATE TABLE IF NOT EXISTS public_profiles (
     extra_json LONGTEXT NULL,
     updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_public_profiles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_friends (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    requester_user_id INT UNSIGNED NOT NULL,
+    addressee_user_id INT UNSIGNED NOT NULL,
+    status ENUM('pending', 'accepted', 'rejected', 'blocked') NOT NULL DEFAULT 'pending',
+    requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    responded_at DATETIME NULL,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_friends_pair (requester_user_id, addressee_user_id),
+    INDEX idx_user_friends_requester (requester_user_id, status),
+    INDEX idx_user_friends_addressee (addressee_user_id, status),
+    CONSTRAINT fk_user_friends_requester FOREIGN KEY (requester_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_friends_addressee FOREIGN KEY (addressee_user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_social_settings (
+    user_id INT UNSIGNED PRIMARY KEY,
+    friend_request_policy ENUM('anyone', 'mutual_friends', 'none') NOT NULL DEFAULT 'anyone',
+    message_policy ENUM('anyone', 'friends', 'mutual_friends', 'none') NOT NULL DEFAULT 'anyone',
+    private_show_bio TINYINT(1) NOT NULL DEFAULT 1,
+    private_show_games TINYINT(1) NOT NULL DEFAULT 1,
+    private_show_achievements TINYINT(1) NOT NULL DEFAULT 1,
+    private_show_friends TINYINT(1) NOT NULL DEFAULT 0,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_user_social_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_relationship_controls (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    target_user_id INT UNSIGNED NOT NULL,
+    control ENUM('blocked', 'muted') NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_relationship_controls_scope (user_id, target_user_id, control),
+    INDEX idx_user_relationship_controls_user (user_id, control),
+    INDEX idx_user_relationship_controls_target (target_user_id, control),
+    CONSTRAINT fk_user_relationship_controls_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_relationship_controls_target FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS community_posts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    title VARCHAR(180) NOT NULL,
+    body TEXT NOT NULL,
+    status ENUM('active', 'hidden', 'deleted') NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_community_posts_user (user_id),
+    INDEX idx_community_posts_status_created (status, created_at),
+    CONSTRAINT fk_community_posts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS community_comments (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    post_id BIGINT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    body TEXT NOT NULL,
+    status ENUM('active', 'hidden', 'deleted') NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_community_comments_post (post_id, status, created_at),
+    INDEX idx_community_comments_user (user_id),
+    CONSTRAINT fk_community_comments_post FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_community_comments_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS direct_message_threads (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_a_id INT UNSIGNED NOT NULL,
+    user_b_id INT UNSIGNED NOT NULL,
+    last_message_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_direct_message_threads_pair (user_a_id, user_b_id),
+    INDEX idx_direct_message_threads_a (user_a_id),
+    INDEX idx_direct_message_threads_b (user_b_id),
+    CONSTRAINT fk_direct_message_threads_a FOREIGN KEY (user_a_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_direct_message_threads_b FOREIGN KEY (user_b_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS direct_messages (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    thread_id BIGINT UNSIGNED NOT NULL,
+    sender_user_id INT UNSIGNED NOT NULL,
+    recipient_user_id INT UNSIGNED NOT NULL,
+    message TEXT NOT NULL,
+    read_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_direct_messages_thread (thread_id, created_at),
+    INDEX idx_direct_messages_recipient_read (recipient_user_id, read_at),
+    CONSTRAINT fk_direct_messages_thread FOREIGN KEY (thread_id) REFERENCES direct_message_threads(id) ON DELETE CASCADE,
+    CONSTRAINT fk_direct_messages_sender FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_direct_messages_recipient FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS support_tickets (

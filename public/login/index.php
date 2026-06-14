@@ -9,8 +9,20 @@ use App\Security\Csrf;
 
 require_installed();
 
+function login_redirect_target(): string
+{
+    $redirect = $_SESSION['after_login_redirect'] ?? '/profile/';
+    unset($_SESSION['after_login_redirect']);
+
+    if (!is_string($redirect) || $redirect === '' || !str_starts_with($redirect, '/') || str_starts_with($redirect, '//')) {
+        return '/profile/';
+    }
+
+    return $redirect;
+}
+
 if (Auth::check()) {
-    redirect_to('/profile/');
+    redirect_to(login_redirect_target());
 }
 
 $error = null;
@@ -24,7 +36,7 @@ if (request_is_post()) {
 
         try {
             if (Auth::attempt($identity, $password)) {
-                redirect_to('/profile/');
+                redirect_to(login_redirect_target());
             }
             $error = 'Credenciales invalidas o cuenta bloqueada.';
         } catch (Throwable) {

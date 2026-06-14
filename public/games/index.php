@@ -4,15 +4,247 @@ declare(strict_types=1);
 require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bootstrap.php';
 
 use App\Core\Page;
+use App\Models\Game;
+use App\Security\Auth;
+use App\Security\Csrf;
+use App\Services\ActivityLogger;
 
 require_installed();
+
+$user = Auth::user();
+$userId = $user ? (int) $user['id'] : null;
+$statusFilter = (string) ($_GET['status'] ?? 'all');
+$allowedStatuses = array_merge(['all'], Game::visibleStatuses());
+if (!in_array($statusFilter, $allowedStatuses, true)) {
+    $statusFilter = 'all';
+}
+
+$selectedSlug = (string) ($_GET['game'] ?? '');
+$selectedGame = $selectedSlug !== '' ? Game::findPublicBySlug($selectedSlug, $userId) : null;
+
+if (request_is_post()) {
+    if (!Auth::check()) {
+        flash('error', 'Debes iniciar sesion para vincular juegos.');
+        redirect_to('/login/');
+    }
+
+    if (!Csrf::validate($_POST['_csrf'] ?? null)) {
+        flash('error', 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.');
+        redirect_to('/games/');
+    }
+
+    $gameId = (int) ($_POST['game_id'] ?? 0);
+    $slug = (string) ($_POST['slug'] ?? '');
+    $action = (string) ($_POST['action'] ?? '');
+
+    try {
+        if ($gameId <= 0) {
+            throw new RuntimeException('Juego invalido.');
+        }
+
+        if ($action === 'link') {
+            Game::linkUser((int) $userId, $gameId);
+            ActivityLogger::info('game_linked', ['user_id' => $userId, 'game_id' => $gameId]);
+            flash('message', 'Juego vinculado a tu cuenta.');
+        } elseif ($action === 'unlink') {
+            Game::unlinkUser((int) $userId, $gameId);
+            ActivityLogger::info('game_unlinked', ['user_id' => $userId, 'game_id' => $gameId]);
+            flash('message', 'Juego desvinculado de tu cuenta.');
+        } else {
+            throw new RuntimeException('Accion no valida.');
+        }
+    } catch (Throwable $exception) {
+        flash('error', $exception->getMessage());
+    }
+
+    redirect_to($slug !== '' ? '/games/?game=' . rawurlencode($slug) : '/games/');
+}
+
+$games = Game::publicGames($userId, $statusFilter);
+$links = $userId !== null ? Game::userLinks($userId) : [];
 
 Page::header('Juegos');
 ?>
 <section class="panel">
-    <h1>Juegos</h1>
-    <p class="muted">Base preparada para listar juegos registrados, sus versiones, configuracion y acceso desde APIs.</p>
-    <p>La gestion completa de juegos queda para una fase posterior. La tabla y la estructura ya estan creadas.</p>
+    <div class="section-heading">
+        <div>
+            <h1>Juegos</h1>
+            <p class="muted">Catalogo publico de juegos registrados en la infraestructura.</p>
+        </div>
+        <?php if (Auth::hasRole(['admin', 'superroot'])): ?>
+            <a class="button button--secondary" href="<?= e(url('/admin/?section=games')) ?>">Gestionar juegos</a>
+        <?php endif; ?>
+    </div>
 </section>
+
+<?php if ($selectedSlug !== '' && !$selectedGame): ?>
+    <div class="alert alert--error">El juego solicitado no existe o no esta visible.</div>
+<?php endif; ?>
+
+<?php if ($selectedGame): ?>
+    <?php
+    $config = Game::decodeJson($selectedGame['config_json'] ?? null);
+    $endpoints = Game::decodeJson($selectedGame['endpoints_json'] ?? null);
+    $cdn = Game::decodeJson($selectedGame['cdn_json'] ?? null);
+    ?>
+    <section class="game-detail">
+        <article class="panel">
+            <div class="thread-header">
+                <div>
+                    <h2><?= e($selectedGame['name']) ?></h2>
+                    <p class="muted">
+                        <code><?= e($selectedGame['slug']) ?></code>
+                        · <?= e(Game::statusLabel((string) $selectedGame['status'])) ?>
+                        <?php if (!empty($selectedGame['current_version'])): ?>
+                            · Version <?= e($selectedGame['current_version']) ?>
+                        <?php endif; ?>
+                    </p>
+                </div>
+                <span class="status-pill status-pill--<?= e((string) $selectedGame['status']) ?>">
+                    <?= e(Game::statusLabel((string) $selectedGame['status'])) ?>
+                </span>
+            </div>
+
+            <p><?= nl2br(e($selectedGame['description'] ?? 'Sin descripcion publica.')) ?></p>
+
+            <dl class="meta">
+                <div><dt>Builds</dt><dd><?= e($selectedGame['build_count'] ?? 0) ?></dd></div>
+                <div><dt>Ultima build</dt><dd><?= e($selectedGame['latest_build_at'] ?? 'Sin builds') ?></dd></div>
+                <div><dt>Creado</dt><dd><?= e($selectedGame['created_at']) ?></dd></div>
+            </dl>
+
+            <div class="actions">
+                <?php if (!$user): ?>
+                    <a class="button" href="<?= e(url('/login/')) ?>">Iniciar sesion para vincular</a>
+                <?php elseif ((int) $selectedGame['is_linked'] === 1): ?>
+                    <form method="post">
+                        <?= Csrf::field() ?>
+                        <input type="hidden" name="action" value="unlink">
+                        <input type="hidden" name="game_id" value="<?= e($selectedGame['id']) ?>">
+                        <input type="hidden" name="slug" value="<?= e($selectedGame['slug']) ?>">
+                        <button type="submit" class="button button--secondary">Desvincular de mi cuenta</button>
+                    </form>
+                <?php else: ?>
+                    <form method="post">
+                        <?= Csrf::field() ?>
+                        <input type="hidden" name="action" value="link">
+                        <input type="hidden" name="game_id" value="<?= e($selectedGame['id']) ?>">
+                        <input type="hidden" name="slug" value="<?= e($selectedGame['slug']) ?>">
+                        <button type="submit">Vincular a mi cuenta</button>
+                    </form>
+                <?php endif; ?>
+                <a class="button button--secondary" href="<?= e(url('/games/')) ?>">Volver al catalogo</a>
+            </div>
+        </article>
+
+        <aside class="panel">
+            <h3>Configuracion publica</h3>
+            <?php if ($config === [] && $endpoints === [] && $cdn === []): ?>
+                <p class="muted">Este juego aun no tiene configuracion publica registrada.</p>
+            <?php else: ?>
+                <?php if ($config !== []): ?>
+                    <h4>Config</h4>
+                    <pre class="code-view"><?= e(json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) ?></pre>
+                <?php endif; ?>
+                <?php if ($endpoints !== []): ?>
+                    <h4>Endpoints</h4>
+                    <pre class="code-view"><?= e(json_encode($endpoints, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) ?></pre>
+                <?php endif; ?>
+                <?php if ($cdn !== []): ?>
+                    <h4>CDN</h4>
+                    <pre class="code-view"><?= e(json_encode($cdn, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) ?></pre>
+                <?php endif; ?>
+            <?php endif; ?>
+        </aside>
+    </section>
+<?php endif; ?>
+
+<section class="panel">
+    <div class="section-heading">
+        <div>
+            <h2>Catalogo</h2>
+            <p class="muted">Los juegos archivados no se muestran publicamente.</p>
+        </div>
+        <form class="filter-bar filter-bar--inline" method="get">
+            <label for="status">Estado</label>
+            <select id="status" name="status" onchange="this.form.submit()">
+                <?php foreach ($allowedStatuses as $status): ?>
+                    <option value="<?= e($status) ?>" <?= $statusFilter === $status ? 'selected' : '' ?>>
+                        <?= e($status === 'all' ? 'Todos' : Game::statusLabel($status)) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </form>
+    </div>
+
+    <?php if ($games === []): ?>
+        <div class="empty-state">
+            <h3>No hay juegos visibles</h3>
+            <p class="muted">Crea un juego desde Admin y dejalo en desarrollo, playtest, beta o publicado.</p>
+        </div>
+    <?php else: ?>
+        <div class="game-grid">
+            <?php foreach ($games as $game): ?>
+                <?php
+                $description = (string) ($game['description'] ?? '');
+                $shortDescription = $description !== ''
+                    ? (strlen($description) > 160 ? substr($description, 0, 157) . '...' : $description)
+                    : 'Sin descripcion publica.';
+                ?>
+                <article class="game-card">
+                    <div class="game-card__header">
+                        <h3><?= e($game['name']) ?></h3>
+                        <span class="status-pill status-pill--<?= e((string) $game['status']) ?>">
+                            <?= e(Game::statusLabel((string) $game['status'])) ?>
+                        </span>
+                    </div>
+                    <p class="muted"><?= e($shortDescription) ?></p>
+                    <dl class="meta">
+                        <div><dt>Slug</dt><dd><code><?= e($game['slug']) ?></code></dd></div>
+                        <div><dt>Version</dt><dd><?= e($game['current_version'] ?? 'Sin version') ?></dd></div>
+                        <div><dt>Vinculado</dt><dd><?= ((int) $game['is_linked'] === 1) ? 'Si' : 'No' ?></dd></div>
+                    </dl>
+                    <div class="actions">
+                        <a class="button button--secondary" href="<?= e(url('/games/?game=' . rawurlencode((string) $game['slug']))) ?>">Ver juego</a>
+                    </div>
+                </article>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+</section>
+
+<?php if ($user): ?>
+    <section class="panel">
+        <h2>Mis juegos vinculados</h2>
+        <?php if ($links === []): ?>
+            <p class="muted">Todavia no tienes juegos vinculados a tu cuenta.</p>
+        <?php else: ?>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Juego</th>
+                            <th>Estado</th>
+                            <th>Version</th>
+                            <th>Vinculado</th>
+                            <th>Accion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($links as $link): ?>
+                            <tr>
+                                <td><?= e($link['name']) ?></td>
+                                <td><?= e(Game::statusLabel((string) $link['status'])) ?></td>
+                                <td><?= e($link['current_version'] ?? '') ?></td>
+                                <td><?= e($link['linked_at']) ?></td>
+                                <td><a class="button button--secondary" href="<?= e(url('/games/?game=' . rawurlencode((string) $link['slug']))) ?>">Abrir</a></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </section>
+<?php endif; ?>
 <?php
 Page::footer();
