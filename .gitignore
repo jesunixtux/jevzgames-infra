@@ -1,0 +1,10 @@
+app/config/config.php
+app/config/installed.lock
+storage/logs/*
+storage/cache/*
+storage/uploads/*
+storage/sessions/*
+!storage/logs/.gitkeep
+!storage/cache/.gitkeep
+!storage/uploads/.gitkeep
+!storage/sessions/.gitkeep
