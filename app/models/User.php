@@ -12,8 +12,12 @@ final class User
     public static function findByEmailOrUsername(string $identity): ?array
     {
         $pdo = Database::pdo();
-        $stmt = $pdo->prepare('SELECT * FROM users WHERE email = :identity OR username = :identity LIMIT 1');
-        $stmt->execute(['identity' => trim($identity)]);
+        $identity = trim($identity);
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE email = :email_identity OR username = :username_identity LIMIT 1');
+        $stmt->execute([
+            'email_identity' => $identity,
+            'username_identity' => $identity,
+        ]);
         $user = $stmt->fetch();
 
         return is_array($user) ? $user : null;
