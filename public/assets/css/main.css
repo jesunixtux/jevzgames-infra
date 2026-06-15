@@ -147,6 +147,19 @@ a:hover {
     max-width: 560px;
 }
 
+.panel-lite {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 18px 0;
+    padding: 14px;
+    background: var(--surface-soft);
+}
+
+.panel-lite summary {
+    cursor: pointer;
+    font-weight: 700;
+}
+
 .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));

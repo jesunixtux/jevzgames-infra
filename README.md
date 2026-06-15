@@ -398,6 +398,32 @@ Flujo minimo para montar un launcher:
 
 Si una cuenta esta suspendida, el login web muestra un popup y el cliente recibe error `403`.
 
+### Cliente CEF local
+
+El cliente local basado en Chromium Embedded Framework esta en:
+
+```text
+clients/cef-steam-client/
+```
+
+Para ejecutarlo:
+
+```powershell
+cd C:\xampp\jevzgames-infra\clients\cef-steam-client
+.\run-local.ps1
+```
+
+Para que un juego se instale tipo Steam:
+
+1. Empaqueta el juego en `.zip`.
+2. Asegurate de que el `.exe` quede dentro del zip.
+3. En `/admin/?section=games`, bloque `Builds instalables`, sube el `.zip`.
+4. Indica la ruta relativa del ejecutable, por ejemplo `JumpFall.exe` o `Windows/JumpFall.exe`.
+5. El cliente recibe `install_build` desde `/api/client/library/`.
+6. El cliente descarga, verifica checksum, extrae en `%AppData%\JevzGamesClient\games\<slug>` y ejecuta el `.exe`.
+
+La primera compilacion del cliente descarga CefSharp/CEF desde NuGet y puede tardar bastante porque CEF es pesado.
+
 ## Apache
 
 Configura el document root en `public/`. Las carpetas privadas tienen `.htaccess` para bloquear acceso directo, pero la proteccion principal es no exponerlas como raiz web.

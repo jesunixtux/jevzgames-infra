@@ -324,6 +324,21 @@ Devuelve:
 - `linked_games`: biblioteca vinculada del usuario.
 - `catalog`: catalogo visible.
 
+Cada juego puede incluir `install_build` si Admin subio o registro un `.zip` instalable:
+
+```json
+{
+  "install_build": {
+    "version": "0.1.0",
+    "channel": "development",
+    "download_url": "http://jevzgames.local/uploads/builds/jumpfall/jumpfall-0.1.0-development.zip",
+    "checksum": "sha256...",
+    "size_bytes": 123456,
+    "executable_path": "JumpFall.exe"
+  }
+}
+```
+
 ### POST `/api/client/inventory/`
 
 Lista inventario completo del usuario autenticado por `client_token`.

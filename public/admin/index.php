@@ -8,6 +8,7 @@ use App\Models\Achievement;
 use App\Models\Admin;
 use App\Models\CloudSave;
 use App\Models\GameDatabase;
+use App\Models\GameBuild;
 use App\Models\PublishRequest;
 use App\Models\Support;
 use App\Models\Workshop;
@@ -99,6 +100,27 @@ if (request_is_post()) {
             redirect_to('/admin/?section=games');
         }
 
+        if ($action === 'save_game_build') {
+            $buildId = GameBuild::saveUpload($_POST, $_FILES['build_zip'] ?? []);
+            ActivityLogger::info('admin_game_build_saved', ['user_id' => $userId, 'build_id' => $buildId, 'game_id' => (int) ($_POST['game_id'] ?? 0)]);
+            flash('message', 'Build ZIP guardada.');
+            redirect_to('/admin/?section=games');
+        }
+
+        if ($action === 'save_remote_game_build') {
+            $buildId = GameBuild::saveRemote($_POST);
+            ActivityLogger::info('admin_remote_game_build_saved', ['user_id' => $userId, 'build_id' => $buildId, 'game_id' => (int) ($_POST['game_id'] ?? 0)]);
+            flash('message', 'Build remota guardada.');
+            redirect_to('/admin/?section=games');
+        }
+
+        if ($action === 'delete_game_build') {
+            GameBuild::delete((int) ($_POST['build_id'] ?? 0));
+            ActivityLogger::info('admin_game_build_deleted', ['user_id' => $userId, 'build_id' => (int) ($_POST['build_id'] ?? 0)]);
+            flash('message', 'Build eliminada.');
+            redirect_to('/admin/?section=games');
+        }
+
         if ($action === 'save_achievement') {
             $achievementId = Achievement::save($_POST);
             ActivityLogger::info('admin_achievement_saved', ['user_id' => $userId, 'achievement_id' => $achievementId]);
@@ -168,6 +190,7 @@ if (request_is_post()) {
 $stats = Admin::dashboardStats();
 $users = Admin::users();
 $games = Admin::games();
+$gameBuilds = GameBuild::list();
 $publishStatus = (string) ($_GET['publish_status'] ?? 'pending');
 $publishRequests = PublishRequest::all($publishStatus);
 $apiKeys = Admin::apiKeys();
@@ -431,6 +454,140 @@ Page::header('Admin');
                                         <?php endforeach; ?>
                                     </select>
                                     <button type="submit" class="button button--secondary">Cambiar</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Builds instalables</h2>
+        <p class="muted">Sube un .zip por juego. El cliente lo descarga, extrae y ejecuta la ruta indicada dentro del zip.</p>
+
+        <form class="form" method="post" enctype="multipart/form-data">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="save_game_build">
+            <div class="form-grid">
+                <div class="field">
+                    <label for="build_game_id">Juego</label>
+                    <select id="build_game_id" name="game_id" required>
+                        <?php foreach ($games as $game): ?>
+                            <option value="<?= e($game['id']) ?>"><?= e($game['name']) ?> (<?= e($game['slug']) ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="build_version">Version</label>
+                    <input id="build_version" name="version" value="0.1.0" maxlength="60" required>
+                </div>
+                <div class="field">
+                    <label for="build_channel">Canal</label>
+                    <select id="build_channel" name="channel">
+                        <?php foreach (GameBuild::channels() as $channel): ?>
+                            <option value="<?= e($channel) ?>"><?= e($channel) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="build_executable_path">Ejecutable dentro del zip</label>
+                    <input id="build_executable_path" name="executable_path" placeholder="Game.exe o Windows/Game.exe" maxlength="255" required>
+                </div>
+                <div class="field">
+                    <label for="build_zip">Build .zip</label>
+                    <input id="build_zip" name="build_zip" type="file" accept=".zip,application/zip" required>
+                </div>
+            </div>
+            <div class="field">
+                <label for="build_notes">Notas</label>
+                <textarea id="build_notes" name="notes" rows="3"></textarea>
+            </div>
+            <div class="actions">
+                <button type="submit">Subir build ZIP</button>
+            </div>
+        </form>
+
+        <details class="panel-lite">
+            <summary>Registrar una build por URL</summary>
+            <form class="form" method="post">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="action" value="save_remote_game_build">
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="remote_build_game_id">Juego</label>
+                        <select id="remote_build_game_id" name="game_id" required>
+                            <?php foreach ($games as $game): ?>
+                                <option value="<?= e($game['id']) ?>"><?= e($game['name']) ?> (<?= e($game['slug']) ?>)</option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="remote_build_version">Version</label>
+                        <input id="remote_build_version" name="version" maxlength="60" required>
+                    </div>
+                    <div class="field">
+                        <label for="remote_build_channel">Canal</label>
+                        <select id="remote_build_channel" name="channel">
+                            <?php foreach (GameBuild::channels() as $channel): ?>
+                                <option value="<?= e($channel) ?>"><?= e($channel) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="remote_build_executable_path">Ejecutable dentro del zip</label>
+                        <input id="remote_build_executable_path" name="executable_path" placeholder="Game.exe" maxlength="255" required>
+                    </div>
+                    <div class="field">
+                        <label for="remote_file_path">URL o ruta .zip</label>
+                        <input id="remote_file_path" name="file_path" placeholder="https://.../game.zip o /uploads/builds/game.zip" required>
+                    </div>
+                    <div class="field">
+                        <label for="remote_checksum">SHA-256 opcional</label>
+                        <input id="remote_checksum" name="checksum" maxlength="128">
+                    </div>
+                </div>
+                <div class="actions">
+                    <button type="submit" class="button button--secondary">Guardar build remota</button>
+                </div>
+            </form>
+        </details>
+
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Juego</th>
+                        <th>Version</th>
+                        <th>Canal</th>
+                        <th>ZIP</th>
+                        <th>Ejecutable</th>
+                        <th>Accion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($gameBuilds === []): ?>
+                        <tr><td colspan="6">No hay builds instalables.</td></tr>
+                    <?php endif; ?>
+                    <?php foreach ($gameBuilds as $build): ?>
+                        <tr>
+                            <td><?= e($build['game_name']) ?><br><code><?= e($build['game_slug']) ?></code></td>
+                            <td><?= e($build['version']) ?></td>
+                            <td><?= e($build['channel']) ?></td>
+                            <td>
+                                <?php if (!empty($build['download_url'])): ?>
+                                    <a href="<?= e($build['download_url']) ?>" target="_blank" rel="noreferrer">Descargar</a><br>
+                                <?php endif; ?>
+                                <span class="muted"><?= e((string) ($build['size_bytes'] ?? '')) ?> bytes</span>
+                            </td>
+                            <td><code><?= e($build['executable_path'] ?? '') ?></code></td>
+                            <td>
+                                <form method="post">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="delete_game_build">
+                                    <input type="hidden" name="build_id" value="<?= e($build['id']) ?>">
+                                    <button type="submit" class="button button--secondary">Eliminar</button>
                                 </form>
                             </td>
                         </tr>

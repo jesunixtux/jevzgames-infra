@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS game_builds (
     channel ENUM('development', 'playtest', 'beta', 'stable', 'archived') NOT NULL DEFAULT 'development',
     file_path VARCHAR(255) NULL,
     checksum VARCHAR(128) NULL,
+    size_bytes BIGINT UNSIGNED NULL,
+    executable_path VARCHAR(255) NULL,
     notes TEXT NULL,
     published_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

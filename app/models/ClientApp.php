@@ -98,10 +98,25 @@ final class ClientApp
     public static function library(int $userId): array
     {
         self::ensureEnabled();
+        $linkedGames = Game::userLinks($userId);
+        $catalog = Game::publicGames($userId, 'all');
+        $gameIds = array_merge(
+            array_map(static fn (array $game): int => (int) $game['game_id'], $linkedGames),
+            array_map(static fn (array $game): int => (int) $game['id'], $catalog)
+        );
+        $builds = GameBuild::latestForGames($gameIds);
 
         return [
-            'linked_games' => Game::userLinks($userId),
-            'catalog' => Game::publicGames($userId, 'all'),
+            'linked_games' => array_map(static function (array $game) use ($builds): array {
+                $gameId = (int) $game['game_id'];
+                $game['install_build'] = $builds[$gameId] ?? null;
+                return $game;
+            }, $linkedGames),
+            'catalog' => array_map(static function (array $game) use ($builds): array {
+                $gameId = (int) $game['id'];
+                $game['install_build'] = $builds[$gameId] ?? null;
+                return $game;
+            }, $catalog),
         ];
     }
 
