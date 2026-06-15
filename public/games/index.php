@@ -13,6 +13,7 @@ require_installed();
 
 $user = Auth::user();
 $userId = $user ? (int) $user['id'] : null;
+$canManuallyLinkGames = Auth::hasRole(['admin', 'superroot']);
 $statusFilter = (string) ($_GET['status'] ?? 'all');
 $allowedStatuses = array_merge(['all'], Game::visibleStatuses());
 if (!in_array($statusFilter, $allowedStatuses, true)) {
@@ -43,13 +44,16 @@ if (request_is_post()) {
         }
 
         if ($action === 'link') {
+            if (!$canManuallyLinkGames) {
+                throw new RuntimeException('El vinculo manual solo esta disponible para Admin o Superroot. Los jugadores se vinculan al iniciar sesion desde el juego.');
+            }
             Game::linkUser((int) $userId, $gameId);
             ActivityLogger::info('game_linked', ['user_id' => $userId, 'game_id' => $gameId]);
             flash('message', 'Juego vinculado a tu cuenta.');
         } elseif ($action === 'unlink') {
-            Game::unlinkUser((int) $userId, $gameId);
+            Game::unlinkUser((int) $userId, $gameId, true);
             ActivityLogger::info('game_unlinked', ['user_id' => $userId, 'game_id' => $gameId]);
-            flash('message', 'Juego desvinculado de tu cuenta.');
+            flash('message', 'Juego desvinculado. Se borraron tus datos de ese juego en la plataforma.');
         } else {
             throw new RuntimeException('Accion no valida.');
         }
@@ -115,16 +119,16 @@ Page::header('Juegos');
 
             <div class="actions">
                 <?php if (!$user): ?>
-                    <a class="button" href="<?= e(url('/login/')) ?>">Iniciar sesion para vincular</a>
+                    <a class="button" href="<?= e(url('/login/')) ?>">Iniciar sesion</a>
                 <?php elseif ((int) $selectedGame['is_linked'] === 1): ?>
                     <form method="post">
                         <?= Csrf::field() ?>
                         <input type="hidden" name="action" value="unlink">
                         <input type="hidden" name="game_id" value="<?= e($selectedGame['id']) ?>">
                         <input type="hidden" name="slug" value="<?= e($selectedGame['slug']) ?>">
-                        <button type="submit" class="button button--secondary">Desvincular de mi cuenta</button>
+                        <button type="submit" class="button button--secondary">Desvincular y borrar datos</button>
                     </form>
-                <?php else: ?>
+                <?php elseif ($canManuallyLinkGames): ?>
                     <form method="post">
                         <?= Csrf::field() ?>
                         <input type="hidden" name="action" value="link">
@@ -132,6 +136,8 @@ Page::header('Juegos');
                         <input type="hidden" name="slug" value="<?= e($selectedGame['slug']) ?>">
                         <button type="submit">Vincular a mi cuenta</button>
                     </form>
+                <?php else: ?>
+                    <span class="muted">El juego se vincula automaticamente cuando inicias sesion desde el cliente o desde Unity.</span>
                 <?php endif; ?>
                 <a class="button button--secondary" href="<?= e(url('/games/')) ?>">Volver al catalogo</a>
             </div>

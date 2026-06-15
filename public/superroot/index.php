@@ -4,6 +4,7 @@ declare(strict_types=1);
 require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bootstrap.php';
 
 use App\Core\Page;
+use App\Models\PlatformSettings;
 use App\Models\Superroot;
 use App\Security\Auth;
 use App\Security\Csrf;
@@ -14,7 +15,7 @@ Auth::requireRole('superroot');
 
 $user = Auth::user();
 $userId = (int) ($user['id'] ?? 0);
-$sections = ['overview', 'config', 'integrations', 'users', 'maintenance'];
+$sections = ['overview', 'config', 'features', 'integrations', 'users', 'maintenance'];
 $section = (string) ($_GET['section'] ?? 'overview');
 if (!in_array($section, $sections, true)) {
     $section = 'overview';
@@ -41,6 +42,13 @@ if (request_is_post()) {
             ActivityLogger::info('superroot_integration_saved', ['user_id' => $userId, 'integration_id' => $integrationId]);
             flash('message', 'Integracion guardada.');
             redirect_to('/superroot/?section=integrations');
+        }
+
+        if ($action === 'save_features') {
+            PlatformSettings::save($_POST);
+            ActivityLogger::info('superroot_features_saved', ['user_id' => $userId]);
+            flash('message', 'Funciones de plataforma actualizadas.');
+            redirect_to('/superroot/?section=features');
         }
 
         if ($action === 'toggle_integration') {
@@ -73,6 +81,7 @@ $users = Superroot::users();
 $maintenance = Superroot::maintenanceInfo();
 $logLines = Superroot::recentLogLines(30);
 $config = app_config();
+$platformSettings = PlatformSettings::values();
 $editIntegrationId = (int) ($_GET['edit_integration'] ?? 0);
 $editingIntegration = null;
 foreach ($integrations as $integration) {
@@ -85,6 +94,7 @@ foreach ($integrations as $integration) {
 $sectionLabels = [
     'overview' => 'Resumen',
     'config' => 'Configuracion',
+    'features' => 'Funciones',
     'integrations' => 'Integraciones',
     'users' => 'Usuarios',
     'maintenance' => 'Mantenimiento',
@@ -223,10 +233,61 @@ Page::header('Superroot');
     </section>
 <?php endif; ?>
 
+<?php if ($section === 'features'): ?>
+    <section class="panel">
+        <h2>Funciones de plataforma</h2>
+        <p class="muted">Estas opciones activan superficies publicas sin tocar codigo. Por defecto quedan apagadas.</p>
+        <form class="form" method="post">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="save_features">
+
+            <div class="form-grid">
+                <label class="checkbox-field">
+                    <input type="checkbox" name="publish_on_games_enabled" value="1" <?= !empty($platformSettings['features.publish_on_games_enabled']) ? 'checked' : '' ?>>
+                    Activar /publish-on-games/
+                </label>
+                <label class="checkbox-field">
+                    <input type="checkbox" name="workshop_enabled" value="1" <?= !empty($platformSettings['features.workshop_enabled']) ? 'checked' : '' ?>>
+                    Activar Workshop
+                </label>
+                <label class="checkbox-field">
+                    <input type="checkbox" name="client_enabled" value="1" <?= !empty($platformSettings['features.client_enabled']) ? 'checked' : '' ?>>
+                    Activar cliente tipo Steam
+                </label>
+            </div>
+
+            <h3>Cliente</h3>
+            <div class="form-grid">
+                <div class="field">
+                    <label for="client_name">Nombre del cliente</label>
+                    <input id="client_name" name="client_name" value="<?= e($platformSettings['client.name'] ?? 'JevzGames Client') ?>" maxlength="120">
+                </div>
+                <div class="field">
+                    <label for="client_download_url">URL de descarga</label>
+                    <input id="client_download_url" name="client_download_url" value="<?= e($platformSettings['client.download_url'] ?? '') ?>" placeholder="https://example.com/client.zip">
+                </div>
+                <div class="field">
+                    <label for="client_min_version">Version minima</label>
+                    <input id="client_min_version" name="client_min_version" value="<?= e($platformSettings['client.min_version'] ?? '0.1.0') ?>" maxlength="40">
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="client_config_json">Config JSON del cliente</label>
+                <textarea id="client_config_json" name="client_config_json" rows="5" placeholder='{"theme":"default","news_url":""}'><?= e(is_array($platformSettings['client.config_json'] ?? null) ? json_encode($platformSettings['client.config_json'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '') ?></textarea>
+            </div>
+
+            <div class="actions">
+                <button type="submit">Guardar funciones</button>
+            </div>
+        </form>
+    </section>
+<?php endif; ?>
+
 <?php if ($section === 'integrations'): ?>
     <section class="panel">
         <h2><?= $editingIntegration ? 'Editar integracion' : 'Nueva integracion' ?></h2>
-        <p class="muted">Steam, Epic, GOG u otros proveedores quedan configurados en base de datos, no hardcodeados.</p>
+        <p class="muted">Steam, Epic, GOG u otros proveedores quedan configurados en base de datos. Para mostrar boton de login usa <code>login_enabled</code> en el JSON.</p>
         <form class="form" method="post">
             <?= Csrf::field() ?>
             <input type="hidden" name="action" value="save_integration">
@@ -263,7 +324,7 @@ Page::header('Superroot');
 
             <div class="field">
                 <label for="config_json">Configuracion JSON</label>
-                <textarea id="config_json" name="config_json" rows="5" placeholder='{"redirect_uri":"http://jevzgames.local/auth/callback"}'><?= e($editingIntegration['config_json'] ?? '') ?></textarea>
+                <textarea id="config_json" name="config_json" rows="5" placeholder='{"login_enabled":true,"auth_url":"https://provider/oauth/authorize","token_url":"https://provider/oauth/token","userinfo_url":"https://provider/oauth/userinfo","scope":"openid profile email","client_secret":"opcional"}'><?= e($editingIntegration['config_json'] ?? '') ?></textarea>
             </div>
 
             <div class="actions">

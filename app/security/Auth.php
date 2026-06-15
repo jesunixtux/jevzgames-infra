@@ -3,16 +3,25 @@ declare(strict_types=1);
 
 namespace App\Security;
 
+use App\Core\Database;
 use App\Core\Page;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use RuntimeException;
 
 final class Auth
 {
+    private const REMEMBER_COOKIE = 'JEVZGAMES_REMEMBER';
+    private const REMEMBER_DAYS = 30;
+
     private static ?array $cachedUser = null;
 
     public static function check(): bool
     {
+        if (!isset($_SESSION['user_id']) || (int) $_SESSION['user_id'] <= 0) {
+            self::restoreRememberedUser();
+        }
+
         return isset($_SESSION['user_id']) && (int) $_SESSION['user_id'] > 0;
     }
 
@@ -34,8 +43,13 @@ final class Auth
             self::$cachedUser = null;
         }
 
-        if (self::$cachedUser === null) {
+        if (self::$cachedUser === null || (self::$cachedUser['status'] ?? '') === 'blocked') {
+            if (self::$cachedUser !== null && (self::$cachedUser['status'] ?? '') === 'blocked') {
+                $_SESSION['suspended_account_notice'] = true;
+                self::revokeRememberCookie();
+            }
             unset($_SESSION['user_id']);
+            self::$cachedUser = null;
         }
 
         return self::$cachedUser;
@@ -54,10 +68,19 @@ final class Auth
         return count(array_intersect($roles, $userRoles)) > 0;
     }
 
-    public static function attempt(string $identity, string $password): bool
+    public static function attempt(string $identity, string $password, bool $remember = false): bool
     {
         $user = User::findByEmailOrUsername($identity);
-        if (!$user || ($user['status'] ?? '') === 'blocked') {
+        if (!$user) {
+            return false;
+        }
+
+        if (($user['status'] ?? '') === 'blocked') {
+            $_SESSION['suspended_account_notice'] = true;
+            throw new RuntimeException('Tu cuenta se encuentra suspendida.');
+        }
+
+        if (($user['status'] ?? '') !== 'active') {
             return false;
         }
 
@@ -69,9 +92,40 @@ final class Auth
         $_SESSION['user_id'] = (int) $user['id'];
         self::$cachedUser = User::findByIdWithRoles((int) $user['id']);
         User::touchLastLogin((int) $user['id']);
+        if ($remember) {
+            self::rememberUser((int) $user['id']);
+        } else {
+            self::revokeRememberCookie();
+        }
         ActivityLogger::info('login_success', ['user_id' => (int) $user['id']]);
 
         return true;
+    }
+
+    public static function loginUserId(int $userId, bool $remember = false): void
+    {
+        $user = User::findByIdWithRoles($userId);
+        if (!$user) {
+            throw new RuntimeException('Usuario no encontrado.');
+        }
+
+        if (($user['status'] ?? '') === 'blocked') {
+            $_SESSION['suspended_account_notice'] = true;
+            throw new RuntimeException('Tu cuenta se encuentra suspendida.');
+        }
+
+        if (($user['status'] ?? '') !== 'active') {
+            throw new RuntimeException('La cuenta no esta activa.');
+        }
+
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = $userId;
+        self::$cachedUser = $user;
+        if ($remember) {
+            self::rememberUser($userId);
+        }
+        User::touchLastLogin($userId);
+        ActivityLogger::info('login_success', ['user_id' => $userId, 'provider' => 'external_oauth']);
     }
 
     public static function logout(): void
@@ -80,6 +134,7 @@ final class Auth
             ActivityLogger::info('logout', ['user_id' => (int) $_SESSION['user_id']]);
         }
 
+        self::revokeRememberCookie();
         self::$cachedUser = null;
         $_SESSION = [];
 
@@ -110,5 +165,128 @@ final class Auth
             Page::footer();
             exit;
         }
+    }
+
+    public static function ensureRememberTable(): void
+    {
+        Database::pdo()->exec(
+            'CREATE TABLE IF NOT EXISTS auth_remember_tokens (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id INT UNSIGNED NOT NULL,
+                selector VARCHAR(32) NOT NULL UNIQUE,
+                token_hash VARCHAR(128) NOT NULL,
+                expires_at DATETIME NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_used_at DATETIME NULL,
+                INDEX idx_auth_remember_tokens_user (user_id),
+                INDEX idx_auth_remember_tokens_expires (expires_at),
+                CONSTRAINT fk_auth_remember_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+    }
+
+    private static function restoreRememberedUser(): void
+    {
+        $cookie = (string) ($_COOKIE[self::REMEMBER_COOKIE] ?? '');
+        if ($cookie === '' || !str_contains($cookie, ':')) {
+            return;
+        }
+
+        [$selector, $token] = explode(':', $cookie, 2);
+        if (!preg_match('/^[a-f0-9]{24}$/', $selector) || !preg_match('/^[a-f0-9]{64}$/', $token)) {
+            self::clearRememberCookie();
+            return;
+        }
+
+        try {
+            self::ensureRememberTable();
+            Database::pdo()->prepare('DELETE FROM auth_remember_tokens WHERE expires_at < NOW()')->execute();
+            $stmt = Database::pdo()->prepare(
+                'SELECT rt.*, u.status
+                 FROM auth_remember_tokens rt
+                 INNER JOIN users u ON u.id = rt.user_id
+                 WHERE rt.selector = :selector
+                 LIMIT 1'
+            );
+            $stmt->execute(['selector' => $selector]);
+            $row = $stmt->fetch();
+        } catch (\Throwable) {
+            return;
+        }
+
+        if (!is_array($row) || !hash_equals((string) $row['token_hash'], hash('sha256', $token))) {
+            self::clearRememberCookie();
+            return;
+        }
+
+        if (($row['status'] ?? '') === 'blocked') {
+            $_SESSION['suspended_account_notice'] = true;
+            self::revokeRememberCookie();
+            return;
+        }
+
+        if (($row['status'] ?? '') !== 'active') {
+            self::revokeRememberCookie();
+            return;
+        }
+
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = (int) $row['user_id'];
+        self::$cachedUser = User::findByIdWithRoles((int) $row['user_id']);
+        Database::pdo()->prepare('UPDATE auth_remember_tokens SET last_used_at = NOW() WHERE id = :id')->execute(['id' => (int) $row['id']]);
+    }
+
+    private static function rememberUser(int $userId): void
+    {
+        self::ensureRememberTable();
+        self::revokeRememberCookie();
+
+        $selector = bin2hex(random_bytes(12));
+        $token = bin2hex(random_bytes(32));
+        $stmt = Database::pdo()->prepare(
+            'INSERT INTO auth_remember_tokens (user_id, selector, token_hash, expires_at, created_at)
+             VALUES (:user_id, :selector, :token_hash, DATE_ADD(NOW(), INTERVAL ' . self::REMEMBER_DAYS . ' DAY), NOW())'
+        );
+        $stmt->execute([
+            'user_id' => $userId,
+            'selector' => $selector,
+            'token_hash' => hash('sha256', $token),
+        ]);
+
+        self::setRememberCookie($selector . ':' . $token, time() + self::REMEMBER_DAYS * 86400);
+    }
+
+    private static function revokeRememberCookie(): void
+    {
+        $cookie = (string) ($_COOKIE[self::REMEMBER_COOKIE] ?? '');
+        if ($cookie !== '' && str_contains($cookie, ':')) {
+            [$selector] = explode(':', $cookie, 2);
+            if (preg_match('/^[a-f0-9]{24}$/', $selector)) {
+                try {
+                    self::ensureRememberTable();
+                    Database::pdo()->prepare('DELETE FROM auth_remember_tokens WHERE selector = :selector')->execute(['selector' => $selector]);
+                } catch (\Throwable) {
+                }
+            }
+        }
+
+        self::clearRememberCookie();
+    }
+
+    private static function setRememberCookie(string $value, int $expires): void
+    {
+        setcookie(self::REMEMBER_COOKIE, $value, [
+            'expires' => $expires,
+            'path' => \public_base_path() !== '' ? \public_base_path() . '/' : '/',
+            'secure' => (bool) \app_config('session.secure', false),
+            'httponly' => true,
+            'samesite' => (string) \app_config('session.samesite', 'Lax'),
+        ]);
+    }
+
+    private static function clearRememberCookie(): void
+    {
+        self::setRememberCookie('', time() - 42000);
+        unset($_COOKIE[self::REMEMBER_COOKIE]);
     }
 }

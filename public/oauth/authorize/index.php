@@ -24,6 +24,19 @@ if ($device && !Auth::check()) {
     redirect_to('/login/');
 }
 
+if ($device && Auth::check() && $device['status'] === 'pending' && !Auth::hasRole(['admin', 'superroot']) && !request_is_post()) {
+    $user = Auth::user();
+    $userId = (int) ($user['id'] ?? 0);
+    try {
+        OAuth::approveDevice((int) $device['id'], $userId);
+        ActivityLogger::info('oauth_device_auto_approved', ['user_id' => $userId, 'game_id' => (int) $device['game_id'], 'device_id' => (int) $device['id']]);
+        flash('message', 'Juego vinculado automaticamente. Ya puedes volver al cliente o Unity.');
+    } catch (Throwable $exception) {
+        flash('error', $exception->getMessage());
+    }
+    redirect_to('/oauth/authorize/?user_code=' . rawurlencode($userCode));
+}
+
 if (request_is_post() && $device && Auth::check()) {
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
         flash('error', 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.');

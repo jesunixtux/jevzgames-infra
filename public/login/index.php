@@ -4,6 +4,7 @@ declare(strict_types=1);
 require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bootstrap.php';
 
 use App\Core\Page;
+use App\Models\ExternalAuth;
 use App\Security\Auth;
 use App\Security\Csrf;
 
@@ -26,6 +27,7 @@ if (Auth::check()) {
 }
 
 $error = null;
+$externalProviders = is_installed() ? ExternalAuth::loginProviders() : [];
 
 if (request_is_post()) {
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
@@ -33,12 +35,15 @@ if (request_is_post()) {
     } else {
         $identity = trim((string) ($_POST['identity'] ?? ''));
         $password = (string) ($_POST['password'] ?? '');
+        $remember = isset($_POST['remember_me']) && (string) $_POST['remember_me'] === '1';
 
         try {
-            if (Auth::attempt($identity, $password)) {
+            if (Auth::attempt($identity, $password, $remember)) {
                 redirect_to(login_redirect_target());
             }
             $error = 'Credenciales invalidas o cuenta bloqueada.';
+        } catch (RuntimeException $exception) {
+            $error = $exception->getMessage();
         } catch (Throwable) {
             $error = 'No se pudo iniciar sesion en este momento.';
         }
@@ -63,11 +68,28 @@ Page::header('Login');
             <label for="password">Contrasena</label>
             <input id="password" name="password" type="password" required>
         </div>
+        <label class="checkbox-field">
+            <input type="checkbox" name="remember_me" value="1" <?= !empty($_POST['remember_me']) ? 'checked' : '' ?>>
+            Mantener sesion iniciada
+        </label>
         <div class="actions">
             <button type="submit">Entrar</button>
             <a class="button button--secondary" href="<?= e(url('/register/')) ?>">Crear cuenta</a>
         </div>
     </form>
+
+    <?php if ($externalProviders !== []): ?>
+        <div class="auth-providers">
+            <h2>OAuth</h2>
+            <div class="actions">
+                <?php foreach ($externalProviders as $provider): ?>
+                    <a class="button button--secondary" href="<?= e(url('/auth/oauth/start/?provider=' . rawurlencode((string) $provider['provider']))) ?>">
+                        Entrar con <?= e($provider['name']) ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    <?php endif; ?>
 </section>
 <?php
 Page::footer();

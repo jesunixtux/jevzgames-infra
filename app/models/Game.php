@@ -98,8 +98,12 @@ final class Game
         ]);
     }
 
-    public static function unlinkUser(int $userId, int $gameId): void
+    public static function unlinkUser(int $userId, int $gameId, bool $deleteGameData = true): void
     {
+        if ($deleteGameData) {
+            self::purgeUserGameData($userId, $gameId);
+        }
+
         $stmt = Database::pdo()->prepare('DELETE FROM user_games WHERE user_id = :user_id AND game_id = :game_id');
         $stmt->execute([
             'user_id' => $userId,
@@ -146,5 +150,42 @@ final class Game
 
         $decoded = json_decode($json, true);
         return is_array($decoded) ? $decoded : [];
+    }
+
+    public static function purgeUserGameData(int $userId, int $gameId): void
+    {
+        $pdo = Database::pdo();
+        $tables = [
+            'user_cloud_saves' => 'DELETE FROM user_cloud_saves WHERE user_id = :user_id AND game_id = :game_id',
+            'game_player_data' => 'DELETE FROM game_player_data WHERE user_id = :user_id AND game_id = :game_id',
+            'user_achievements' => 'DELETE FROM user_achievements WHERE user_id = :user_id AND game_id = :game_id',
+            'game_oauth_tokens' => 'DELETE FROM game_oauth_tokens WHERE user_id = :user_id AND game_id = :game_id',
+            'user_inventory' => 'DELETE FROM user_inventory WHERE user_id = :user_id AND game_id = :game_id',
+            'code_redemptions' => 'DELETE FROM code_redemptions WHERE user_id = :user_id AND game_id = :game_id',
+        ];
+
+        foreach ($tables as $table => $sql) {
+            if (!self::tableExists($table)) {
+                continue;
+            }
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                'user_id' => $userId,
+                'game_id' => $gameId,
+            ]);
+        }
+    }
+
+    private static function tableExists(string $table): bool
+    {
+        $stmt = Database::pdo()->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name = :table_name'
+        );
+        $stmt->execute(['table_name' => $table]);
+
+        return (int) $stmt->fetchColumn() > 0;
     }
 }

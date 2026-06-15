@@ -277,6 +277,9 @@ Page::header('@' . (string) $profile['username']);
                 <div class="achievement-list">
                     <?php foreach ($unlockedAchievements as $achievement): ?>
                         <article class="achievement-item">
+                            <?php if (!empty($achievement['image_path'])): ?>
+                                <img class="achievement-thumb" src="<?= e($achievement['image_path']) ?>" alt="">
+                            <?php endif; ?>
                             <div>
                                 <h3><?= e($achievement['title']) ?></h3>
                                 <p class="muted"><?= e($achievement['game']['name'] ?? '') ?> · <code><?= e($achievement['code']) ?></code></p>

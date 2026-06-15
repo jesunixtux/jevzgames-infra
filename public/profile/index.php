@@ -8,6 +8,7 @@ use App\Models\Achievement;
 use App\Models\CloudSave;
 use App\Models\Friend;
 use App\Models\Game;
+use App\Models\Inventory;
 use App\Models\PublicProfile;
 use App\Models\SocialSettings;
 use App\Security\Auth;
@@ -85,6 +86,7 @@ $unlockedAchievements = Achievement::unlockedForUser($userId);
 $friends = Friend::friendsForUser($userId);
 $pendingFriends = Friend::pendingForUser($userId);
 $cloudSaves = CloudSave::listForUser($userId);
+$inventoryItems = Inventory::listForUser($userId);
 $socialSettings = SocialSettings::settingsForUser($userId);
 $relationshipControls = SocialSettings::controlsForUser($userId);
 
@@ -252,6 +254,11 @@ Page::header('Perfil');
         <h2>Juegos</h2>
         <p class="muted">Vinculados con OAuth.</p>
     </article>
+    <article class="tile metric-tile">
+        <span class="metric"><?= e(count($inventoryItems)) ?></span>
+        <h2>Inventario</h2>
+        <p class="muted"><a href="<?= e(url('/inventory/')) ?>">Ver items y recompensas.</a></p>
+    </article>
 </section>
 
 <section class="panel">
@@ -262,6 +269,9 @@ Page::header('Perfil');
         <div class="achievement-list">
             <?php foreach ($unlockedAchievements as $achievement): ?>
                 <article class="achievement-item">
+                    <?php if (!empty($achievement['image_path'])): ?>
+                        <img class="achievement-thumb" src="<?= e($achievement['image_path']) ?>" alt="">
+                    <?php endif; ?>
                     <div>
                         <h3><?= e($achievement['title']) ?></h3>
                         <p class="muted"><?= e($achievement['game']['name'] ?? '') ?> · <code><?= e($achievement['code']) ?></code></p>

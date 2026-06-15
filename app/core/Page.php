@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Core;
 
 use App\Models\Notification;
+use App\Models\PlatformSettings;
 use App\Security\Auth;
 
 final class Page
@@ -28,6 +29,16 @@ final class Page
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= \e($fullTitle) ?></title>
+    <script>
+    (function () {
+        try {
+            var theme = localStorage.getItem('jevzgames_theme');
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        } catch (exception) {}
+    })();
+    </script>
     <link rel="stylesheet" href="<?= \e(\asset_url('css/main.css')) ?>">
 </head>
 <body>
@@ -38,11 +49,22 @@ final class Page
             <a href="<?= \e(\url('/games/')) ?>">Juegos</a>
             <?php if (\is_installed()): ?>
                 <a href="<?= \e(\url('/community/')) ?>">Comunidad</a>
+                <?php if (PlatformSettings::enabled('publish_on_games')): ?>
+                    <a href="<?= \e(\url('/publish-on-games/')) ?>">Publicar</a>
+                <?php endif; ?>
+                <?php if (PlatformSettings::enabled('workshop')): ?>
+                    <a href="<?= \e(\url('/workshop/')) ?>">Workshop</a>
+                <?php endif; ?>
+                <?php if (PlatformSettings::enabled('client')): ?>
+                    <a href="<?= \e(\url('/client/')) ?>">Cliente</a>
+                <?php endif; ?>
+                <button type="button" class="theme-toggle" data-theme-toggle aria-label="Cambiar modo oscuro">Modo oscuro</button>
             <?php endif; ?>
             <?php if (!\is_installed()): ?>
                 <a href="<?= \e(\url('/install/')) ?>">Instalar</a>
             <?php elseif ($user): ?>
                 <a href="<?= \e(\url('/profile/')) ?>">Perfil</a>
+                <a href="<?= \e(\url('/inventory/')) ?>">Inventario</a>
                 <a href="<?= \e(\url('/messages/')) ?>">Mensajes</a>
                 <a
                     class="nav__notifications <?= $unreadNotifications > 0 ? 'nav__alert' : '' ?>"
@@ -86,6 +108,37 @@ final class Page
     <span>JevzGames Infraestructura modular en PHP puro.</span>
 </footer>
 <script>
+(function () {
+    var toggle = document.querySelector('[data-theme-toggle]');
+    if (toggle) {
+        var applyThemeLabel = function () {
+            toggle.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Modo claro' : 'Modo oscuro';
+        };
+        applyThemeLabel();
+        toggle.addEventListener('click', function () {
+            var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            if (next === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+            }
+            try {
+                localStorage.setItem('jevzgames_theme', next === 'dark' ? 'dark' : 'light');
+            } catch (exception) {}
+            applyThemeLabel();
+        });
+    }
+
+    document.querySelectorAll('[data-dismiss-modal]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var modal = button.closest('[data-dismissible-modal]');
+            if (modal) {
+                modal.remove();
+            }
+        });
+    });
+})();
+
 (function () {
     var link = document.querySelector('[data-notifications-link]');
     if (!link) {
@@ -139,6 +192,8 @@ final class Page
     {
         $message = \flash('message');
         $error = \flash('error');
+        $suspended = !empty($_SESSION['suspended_account_notice']);
+        unset($_SESSION['suspended_account_notice']);
 
         if ($message !== null) {
             echo '<div class="alert alert--success">' . \e((string) $message) . '</div>';
@@ -146,6 +201,16 @@ final class Page
 
         if ($error !== null) {
             echo '<div class="alert alert--error">' . \e((string) $error) . '</div>';
+        }
+
+        if ($suspended) {
+            echo '<div class="modal-backdrop" data-dismissible-modal>';
+            echo '<section class="modal panel" role="alertdialog" aria-modal="true" aria-labelledby="suspended-title">';
+            echo '<h2 id="suspended-title">Cuenta suspendida</h2>';
+            echo '<p>Tu cuenta se encuentra suspendida. Contacta soporte si crees que esto es un error.</p>';
+            echo '<div class="actions"><a class="button" href="' . \e(\url('/support/')) . '">Contactar soporte</a>';
+            echo '<button type="button" class="button button--secondary" data-dismiss-modal>Cerrar</button></div>';
+            echo '</section></div>';
         }
     }
 }

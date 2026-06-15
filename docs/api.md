@@ -177,6 +177,10 @@ Recupera datos JSON del jugador.
 ### POST `/api/achievements/list/`
 
 Lista logros activos/ocultos del juego y el progreso del jugador autenticado.
+Cada logro puede incluir:
+
+- `image_path`: imagen del logro desbloqueado.
+- `locked_image_path`: imagen para mostrarlo bloqueado.
 
 ### POST `/api/achievements/progress/`
 
@@ -202,6 +206,47 @@ Atajo para desbloquear un logro.
 ```json
 {
   "achievement_code": "first_run"
+}
+```
+
+### POST `/api/inventory/list/`
+
+Endpoint autenticado con token Bearer de juego. Lista el inventario del jugador para ese juego.
+
+Header:
+
+```text
+Authorization: Bearer jvg_at_...
+```
+
+### POST `/api/redeem/`
+
+Endpoint autenticado con token Bearer de juego. Canjea un codigo y agrega la recompensa al inventario.
+
+```json
+{
+  "code": "JVG-XXXX-XXXX"
+}
+```
+
+`reward_json` de un codigo puede usar:
+
+```json
+{
+  "item": "skin_blue",
+  "quantity": 1,
+  "name": "Skin azul"
+}
+```
+
+O multiples items:
+
+```json
+{
+  "items": [
+    {"item_key": "skin_blue", "quantity": 1, "name": "Skin azul"},
+    {"item_key": "coins", "quantity": 100, "type": "currency"}
+  ]
 }
 ```
 
@@ -248,10 +293,48 @@ Recupera una partida cloud.
 }
 ```
 
-## Endpoints preparados para fases futuras
+### GET `/api/client/config/`
 
-- `/api/user-login/`
-- `/api/redeem-code/`
+Devuelve la configuracion publica del cliente tipo Steam. Depende de Superroot > Funciones > Cliente.
+
+### POST `/api/client/login/`
+
+Login para un launcher propio. Si la cuenta esta suspendida responde `403` con el mensaje de suspension.
+
+```json
+{
+  "identity": "usuario_o_email",
+  "password": "secret",
+  "client_name": "JevzGames Desktop"
+}
+```
+
+Devuelve `client_token`.
+
+### POST `/api/client/library/`
+
+Header:
+
+```text
+Authorization: Bearer jvg_ct_...
+```
+
+Devuelve:
+
+- `linked_games`: biblioteca vinculada del usuario.
+- `catalog`: catalogo visible.
+
+### POST `/api/client/inventory/`
+
+Lista inventario completo del usuario autenticado por `client_token`.
+
+### POST `/api/client/redeem/`
+
+Canjea codigos desde el cliente.
+
+### POST `/api/client/logout/`
+
+Revoca el token del cliente actual.
 
 ## Autenticacion futura de juegos
 
@@ -265,6 +348,26 @@ La tabla `game_api_keys` guarda:
 - juego asociado
 
 La clave secreta no se guarda en texto plano. Al crear una API key se muestra una sola vez y despues solo se conserva el hash. El flujo OAuth de Unity usa la `public_key`; la `secret_key` queda disponible para flujos servidor a servidor futuros.
+
+## OAuth externo para login web
+
+Superroot puede crear integraciones externas. Los botones de login solo aparecen cuando la integracion esta `active` y su `config_json` incluye:
+
+```json
+{
+  "login_enabled": true,
+  "auth_url": "https://provider.example/oauth/authorize",
+  "token_url": "https://provider.example/oauth/token",
+  "userinfo_url": "https://provider.example/oauth/userinfo",
+  "scope": "openid profile email",
+  "client_secret": "solo-si-el-proveedor-lo-requiere",
+  "id_field": "id",
+  "email_field": "email",
+  "username_field": "username"
+}
+```
+
+El secreto de `client_secret_hash` no se puede recuperar porque esta hasheado. Para OAuth2 real, usa `client_secret` dentro del `config_json` o un proveedor que no requiera secreto en backend local.
 
 ## Ejemplo desde un motor de juego
 

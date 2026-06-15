@@ -42,6 +42,8 @@ La base principal guarda datos compartidos por toda la infraestructura:
 - Integraciones externas.
 - Cuentas externas vinculadas.
 - Logs de actividad.
+- Inventario y canjes por usuario.
+- Publish requests, Workshop y sesiones del cliente.
 
 ## Bases externas por juego
 
@@ -61,6 +63,8 @@ La pagina `/games/` lee la tabla `games` y muestra juegos en estados visibles:
 Los juegos `archived` no se muestran en el catalogo publico.
 
 El detalle usa `?game=slug` y permite vincular la cuenta del usuario con el juego mediante `user_games`.
+
+El vinculo manual desde `/games/` queda reservado a `admin` y `superroot`. Los usuarios normales se vinculan al iniciar sesion desde el juego o cliente. Al desvincular un juego se purgan datos del usuario para ese juego: cloud saves, player data, logros, tokens OAuth e inventario asociado.
 
 ## CDN
 
@@ -104,6 +108,14 @@ La fase actual incluye:
 - `/api/achievements/list/`
 - `/api/achievements/progress/`
 - `/api/achievements/unlock/`
+- `/api/inventory/list/`
+- `/api/redeem/`
+- `/api/client/config/`
+- `/api/client/login/`
+- `/api/client/library/`
+- `/api/client/inventory/`
+- `/api/client/redeem/`
+- `/api/client/logout/`
 
 Las API keys por juego viven en `game_api_keys`. El OAuth device-code guarda solicitudes temporales en `game_oauth_device_codes` y tokens Bearer en `game_oauth_tokens`, siempre hasheados en base de datos.
 
@@ -118,6 +130,8 @@ Cuando el usuario aprueba la solicitud web, la plataforma:
 3. Entrega a Unity un token Bearer de 30 dias.
 
 Unity valida ese token con `/api/user-profile/`. Si el usuario queda bloqueado, el juego se archiva o el token expira, la API rechaza el token.
+
+Para usuarios normales, la pantalla de autorizacion autoaprueba el vinculo despues de iniciar sesion. Admin y superroot mantienen aprobacion manual para revisar flujos de prueba.
 
 ## BD dedicada por juego
 
@@ -138,6 +152,7 @@ Admin configura:
 
 - `code`: identificador estable que usa Unity.
 - `title`, `description`, `points`.
+- `image_path` y `locked_image_path` para mostrar logros como Steam.
 - `goal_value`: meta numerica.
 - `status`: `active`, `hidden`, `disabled`.
 - `reward_json` y `config_json` para reglas o recompensas propias del juego.
@@ -187,7 +202,23 @@ El rol `superroot` queda protegido y no se administra desde la tabla de usuarios
 
 La tabla `redeemable_codes` guarda codigos como hash, no como texto plano. `code_redemptions` registra quien canjeo cada codigo.
 
-La logica de canje queda para una fase posterior, pero el esquema ya evita repetir canjes por usuario y codigo.
+El canje ya entrega recompensas a `user_inventory`. El hash del codigo se calcula con HMAC y el texto plano solo se muestra al crearlo. `code_redemptions` evita repetir canjes por usuario y codigo.
+
+## Inventario
+
+`game_inventory_items` define items globales o asociados a juegos. `user_inventory` guarda cantidades por usuario. Los codigos pueden entregar un item unico o una lista de items desde `reward_json`.
+
+## Publish on Games
+
+`game_publish_requests` guarda solicitudes enviadas desde `/publish-on-games/`. La funcion esta apagada por defecto y se activa en Superroot. Admin puede aprobar una solicitud, lo que crea un juego en estado `development`, o rechazarla con nota.
+
+## Workshop
+
+`game_workshop_configs` define si un juego acepta Workshop, si permite uploads de usuarios y si modera antes o despues de publicar. `workshop_items` guarda mods, mapas, skins u otros archivos por URL.
+
+## Cliente tipo Steam
+
+`client_sessions` guarda tokens Bearer hasheados para launchers externos. El cliente consulta `/api/client/config/`, inicia sesion en `/api/client/login/` y luego usa `/api/client/library/`, `/api/client/inventory/` y `/api/client/redeem/`.
 
 ## Sistema de soporte
 

@@ -63,6 +63,19 @@ CREATE TABLE IF NOT EXISTS sessions (
     CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS auth_remember_tokens (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    selector VARCHAR(32) NOT NULL UNIQUE,
+    token_hash VARCHAR(128) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME NULL,
+    INDEX idx_auth_remember_tokens_user (user_id),
+    INDEX idx_auth_remember_tokens_expires (expires_at),
+    CONSTRAINT fk_auth_remember_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS games (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     owner_user_id INT UNSIGNED NULL,
@@ -219,6 +232,8 @@ CREATE TABLE IF NOT EXISTS game_achievements (
     code VARCHAR(100) NOT NULL,
     title VARCHAR(160) NOT NULL,
     description TEXT NULL,
+    image_path VARCHAR(255) NULL,
+    locked_image_path VARCHAR(255) NULL,
     points INT UNSIGNED NOT NULL DEFAULT 0,
     goal_value DECIMAL(12,2) NOT NULL DEFAULT 1.00,
     is_secret TINYINT(1) NOT NULL DEFAULT 0,
@@ -467,6 +482,113 @@ CREATE TABLE IF NOT EXISTS code_redemptions (
     CONSTRAINT fk_code_redemptions_code FOREIGN KEY (code_id) REFERENCES redeemable_codes(id) ON DELETE CASCADE,
     CONSTRAINT fk_code_redemptions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_code_redemptions_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS game_inventory_items (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NULL,
+    item_key VARCHAR(120) NOT NULL,
+    name VARCHAR(160) NOT NULL,
+    description TEXT NULL,
+    item_type VARCHAR(80) NOT NULL DEFAULT 'item',
+    image_path VARCHAR(255) NULL,
+    metadata_json LONGTEXT NULL,
+    status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_game_inventory_items_scope (game_id, item_key),
+    INDEX idx_game_inventory_items_game (game_id),
+    INDEX idx_game_inventory_items_status (status),
+    CONSTRAINT fk_game_inventory_items_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_inventory (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    game_id INT UNSIGNED NULL,
+    item_id BIGINT UNSIGNED NULL,
+    item_key VARCHAR(120) NOT NULL,
+    quantity INT UNSIGNED NOT NULL DEFAULT 1,
+    source VARCHAR(80) NULL,
+    metadata_json LONGTEXT NULL,
+    acquired_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_inventory_scope (user_id, game_id, item_key),
+    INDEX idx_user_inventory_user (user_id),
+    INDEX idx_user_inventory_game (game_id),
+    CONSTRAINT fk_user_inventory_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_inventory_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_inventory_item FOREIGN KEY (item_id) REFERENCES game_inventory_items(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS game_publish_requests (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    game_id INT UNSIGNED NULL,
+    name VARCHAR(140) NOT NULL,
+    slug VARCHAR(160) NOT NULL,
+    description TEXT NULL,
+    website_url VARCHAR(255) NULL,
+    contact_email VARCHAR(190) NULL,
+    build_url VARCHAR(255) NULL,
+    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+    reviewer_user_id INT UNSIGNED NULL,
+    review_note TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at DATETIME NULL,
+    INDEX idx_game_publish_requests_user (user_id),
+    INDEX idx_game_publish_requests_status (status),
+    CONSTRAINT fk_game_publish_requests_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_game_publish_requests_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE SET NULL,
+    CONSTRAINT fk_game_publish_requests_reviewer FOREIGN KEY (reviewer_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS game_workshop_configs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NOT NULL UNIQUE,
+    status ENUM('enabled', 'disabled') NOT NULL DEFAULT 'disabled',
+    allow_user_uploads TINYINT(1) NOT NULL DEFAULT 0,
+    moderation_mode ENUM('pre', 'post') NOT NULL DEFAULT 'pre',
+    max_file_bytes INT UNSIGNED NOT NULL DEFAULT 10485760,
+    allowed_types_json LONGTEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_game_workshop_configs_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS workshop_items (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    game_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    title VARCHAR(160) NOT NULL,
+    slug VARCHAR(180) NOT NULL,
+    description TEXT NULL,
+    file_url VARCHAR(255) NULL,
+    image_url VARCHAR(255) NULL,
+    metadata_json LONGTEXT NULL,
+    status ENUM('pending', 'published', 'rejected', 'hidden') NOT NULL DEFAULT 'pending',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_workshop_items_game_slug (game_id, slug),
+    INDEX idx_workshop_items_game_status (game_id, status),
+    INDEX idx_workshop_items_user (user_id),
+    CONSTRAINT fk_workshop_items_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+    CONSTRAINT fk_workshop_items_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS client_sessions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    token_hash VARCHAR(128) NOT NULL UNIQUE,
+    client_name VARCHAR(120) NULL,
+    status ENUM('active', 'revoked') NOT NULL DEFAULT 'active',
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME NULL,
+    revoked_at DATETIME NULL,
+    INDEX idx_client_sessions_user (user_id),
+    INDEX idx_client_sessions_status (status),
+    CONSTRAINT fk_client_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS external_integrations (

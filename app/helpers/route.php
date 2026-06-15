@@ -19,7 +19,7 @@ function public_base_path(): string
         return rtrim(substr($script, 0, -strlen('/index.php')), '/');
     }
 
-    if (preg_match('#^(.*?)/(install|login|register|logout|games|oauth|profile|user|community|messages|notifications|support|api|admin|supporter|superroot)(?:/|$)#', $script, $matches)) {
+    if (preg_match('#^(.*?)/(install|login|register|logout|games|oauth|auth|profile|user|community|messages|notifications|support|api|admin|supporter|superroot|inventory|redeem|workshop|publish-on-games|client)(?:/|$)#', $script, $matches)) {
         return rtrim($matches[1], '/');
     }
 

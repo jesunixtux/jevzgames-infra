@@ -22,6 +22,8 @@ final class Achievement
                 code VARCHAR(100) NOT NULL,
                 title VARCHAR(160) NOT NULL,
                 description TEXT NULL,
+                image_path VARCHAR(255) NULL,
+                locked_image_path VARCHAR(255) NULL,
                 points INT UNSIGNED NOT NULL DEFAULT 0,
                 goal_value DECIMAL(12,2) NOT NULL DEFAULT 1.00,
                 is_secret TINYINT(1) NOT NULL DEFAULT 0,
@@ -36,6 +38,8 @@ final class Achievement
                 CONSTRAINT fk_game_achievements_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
+        self::addColumnIfMissing('game_achievements', 'image_path', 'VARCHAR(255) NULL AFTER description');
+        self::addColumnIfMissing('game_achievements', 'locked_image_path', 'VARCHAR(255) NULL AFTER image_path');
 
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS user_achievements (
@@ -116,6 +120,8 @@ final class Achievement
                      code = :code,
                      title = :title,
                      description = :description,
+                     image_path = :image_path,
+                     locked_image_path = :locked_image_path,
                      points = :points,
                      goal_value = :goal_value,
                      is_secret = :is_secret,
@@ -141,9 +147,9 @@ final class Achievement
         unset($insertData['id']);
         $stmt = $pdo->prepare(
             'INSERT INTO game_achievements
-                (game_id, code, title, description, points, goal_value, is_secret, status, reward_json, config_json, created_at, updated_at)
+                (game_id, code, title, description, image_path, locked_image_path, points, goal_value, is_secret, status, reward_json, config_json, created_at, updated_at)
              VALUES
-                (:game_id, :code, :title, :description, :points, :goal_value, :is_secret, :status, :reward_json, :config_json, NOW(), NOW())'
+                (:game_id, :code, :title, :description, :image_path, :locked_image_path, :points, :goal_value, :is_secret, :status, :reward_json, :config_json, NOW(), NOW())'
         );
         try {
             $stmt->execute($insertData);
@@ -294,6 +300,8 @@ final class Achievement
         $title = trim((string) ($input['title'] ?? ''));
         $description = trim((string) ($input['description'] ?? ''));
         $points = (int) ($input['points'] ?? 0);
+        $imagePath = self::cleanAssetPath((string) ($input['image_path'] ?? ''));
+        $lockedImagePath = self::cleanAssetPath((string) ($input['locked_image_path'] ?? ''));
         $goal = (float) ($input['goal_value'] ?? 1);
         $isSecret = isset($input['is_secret']) ? 1 : 0;
         $status = trim((string) ($input['status'] ?? 'active'));
@@ -334,6 +342,8 @@ final class Achievement
             'code' => $code,
             'title' => $title,
             'description' => $description !== '' ? $description : null,
+            'image_path' => $imagePath,
+            'locked_image_path' => $lockedImagePath,
             'points' => $points,
             'goal_value' => $goal,
             'is_secret' => $isSecret,
@@ -402,6 +412,8 @@ final class Achievement
             'code' => (string) $row['code'],
             'title' => (string) $row['title'],
             'description' => $row['description'] ?? null,
+            'image_path' => $row['image_path'] ?? null,
+            'locked_image_path' => $row['locked_image_path'] ?? null,
             'points' => (int) $row['points'],
             'goal_value' => $goal,
             'progress_value' => $progress,
@@ -434,6 +446,43 @@ final class Achievement
         }
 
         return (string) json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    private static function cleanAssetPath(string $path): ?string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return null;
+        }
+
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return strlen($path) <= 255 ? $path : throw new RuntimeException('La URL de imagen del logro es demasiado larga.');
+        }
+
+        if (!preg_match('#^/?[A-Za-z0-9._/\-]+$#', $path) || strlen($path) > 255) {
+            throw new RuntimeException('La ruta de imagen del logro no es valida.');
+        }
+
+        return $path;
+    }
+
+    private static function addColumnIfMissing(string $table, string $column, string $definition): void
+    {
+        $stmt = Database::pdo()->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = :table_name
+               AND column_name = :column_name'
+        );
+        $stmt->execute([
+            'table_name' => $table,
+            'column_name' => $column,
+        ]);
+
+        if ((int) $stmt->fetchColumn() === 0) {
+            Database::pdo()->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition);
+        }
     }
 
     private static function gameExists(int $gameId): bool

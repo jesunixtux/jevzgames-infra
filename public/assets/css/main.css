@@ -16,6 +16,24 @@
     --shadow: 0 16px 40px rgba(25, 35, 38, 0.08);
 }
 
+:root[data-theme="dark"] {
+    --bg: #101416;
+    --surface: #171e21;
+    --surface-soft: #202a2e;
+    --text: #edf3f4;
+    --muted: #a4b1b5;
+    --border: #314045;
+    --accent: #20a7ad;
+    --accent-strong: #75d7dc;
+    --warning: #ffbd63;
+    --danger: #ff7b72;
+    --success-bg: #143424;
+    --success-text: #8fe3b0;
+    --error-bg: #3a1818;
+    --error-text: #ffb4ae;
+    --shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+}
+
 * {
     box-sizing: border-box;
 }
@@ -90,6 +108,15 @@ a:hover {
     font-size: 12px;
     line-height: 1;
     padding: 0 6px;
+}
+
+.theme-toggle {
+    min-height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    background: var(--surface-soft);
+    color: var(--text);
+    font-size: 13px;
 }
 
 .main {
@@ -224,7 +251,7 @@ button:hover {
 }
 
 .button--secondary:hover {
-    background: #e3ebed;
+    background: var(--surface-soft);
 }
 
 .form {
@@ -255,7 +282,7 @@ textarea {
     min-height: 42px;
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: #ffffff;
+    background: var(--surface);
     color: var(--text);
     padding: 10px 12px;
     font: inherit;
@@ -435,12 +462,12 @@ textarea:focus {
 }
 
 .ticket-row:hover {
-    background: #f8fbfb;
+    background: var(--surface-soft);
     text-decoration: none;
 }
 
 .ticket-row--active {
-    background: #e9f6f6;
+    background: var(--surface-soft);
     border-left: 4px solid var(--accent);
     padding-left: 10px;
 }
@@ -550,7 +577,7 @@ textarea:focus {
 
 .tab-nav__item:hover,
 .tab-nav__item--active {
-    background: #e9f6f6;
+    background: var(--surface-soft);
     border-color: #b7dedd;
     color: var(--accent-strong);
     text-decoration: none;
@@ -631,7 +658,7 @@ textarea:focus {
     overflow: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: #f8fbfb;
+    background: var(--surface-soft);
     color: var(--text);
     padding: 12px;
     font-size: 13px;
@@ -745,7 +772,7 @@ textarea:focus {
 }
 
 .compact-row--link:hover {
-    background: #f8fbfb;
+    background: var(--surface-soft);
     text-decoration: none;
 }
 
@@ -798,7 +825,7 @@ textarea:focus {
 
 .notification-row--unread {
     border-color: #f0b6b2;
-    background: #fff7f6;
+    background: var(--error-bg);
 }
 
 .notification-row--unread h3 {
@@ -812,7 +839,7 @@ textarea:focus {
     overflow: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: #fbfcfc;
+    background: var(--surface-soft);
     padding: 14px;
 }
 
@@ -830,8 +857,8 @@ textarea:focus {
 
 .message--support {
     justify-self: end;
-    background: #eef8f7;
-    border-color: #c7e7e4;
+    background: var(--surface-soft);
+    border-color: var(--accent);
 }
 
 .message__meta {
@@ -887,6 +914,30 @@ code {
     border: 1px solid var(--border);
     border-radius: 5px;
     padding: 2px 5px;
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.48);
+}
+
+.modal {
+    width: min(460px, 100%);
+}
+
+.achievement-thumb {
+    width: 58px;
+    height: 58px;
+    flex: 0 0 58px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-soft);
+    object-fit: cover;
 }
 
 @media (max-width: 720px) {
