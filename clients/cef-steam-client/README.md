@@ -11,18 +11,30 @@ Launcher local tipo Steam para Windows usando Chromium Embedded Framework median
 
 ## Ejecutar en local
 
-```powershell
+```bat
 cd C:\xampp\jevzgames-infra\clients\cef-steam-client
-.\run-local.ps1
+.\run-local.cmd
 ```
 
 La primera ejecucion descarga CefSharp/CEF desde NuGet. Esa descarga es pesada.
 
-## Publicar build portable
+Si prefieres usar el script PowerShell y Windows lo bloquea por politica de ejecucion, ejecutalo solo para esta vez con:
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run-local.ps1
+```
+
+## Publicar build portable
+
+```bat
 cd C:\xampp\jevzgames-infra\clients\cef-steam-client
-.\publish-local.ps1
+.\publish-local.cmd
+```
+
+Alternativa PowerShell de una sola ejecucion:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\publish-local.ps1
 ```
 
 El resultado queda en:
