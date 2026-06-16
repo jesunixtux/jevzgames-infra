@@ -5,6 +5,7 @@ namespace App\Core;
 
 use App\Models\Notification;
 use App\Models\PlatformSettings;
+use App\Models\Presence;
 use App\Security\Auth;
 
 final class Page
@@ -14,9 +15,15 @@ final class Page
         $appName = (string) \app_config('app.name', 'JevzGames Infra');
         $fullTitle = $title !== '' ? $title . ' | ' . $appName : $appName;
         $user = Auth::user();
+        $locale = \current_locale();
+        if ($locale !== 'es' && empty($GLOBALS['i18n_output_translation_started'])) {
+            $GLOBALS['i18n_output_translation_started'] = true;
+            \ob_start('\i18n_translate_rendered_html');
+        }
         $unreadNotifications = 0;
         if ($user && \is_installed()) {
             try {
+                Presence::touch((int) ($user['id'] ?? 0), 'web');
                 $unreadNotifications = Notification::unreadCount((int) ($user['id'] ?? 0));
             } catch (\Throwable) {
                 $unreadNotifications = 0;
@@ -24,7 +31,7 @@ final class Page
         }
         ?>
 <!doctype html>
-<html lang="es">
+<html lang="<?= \e($locale) ?>">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -46,53 +53,68 @@ final class Page
     <div class="site-header__inner">
         <a class="brand" href="<?= \e(\url('/')) ?>"><?= \e($appName) ?></a>
         <nav class="nav" aria-label="Navegacion principal">
-            <a href="<?= \e(\url('/games/')) ?>">Juegos</a>
+            <a href="<?= \e(\url('/games/')) ?>"><?= \e(\t('nav.games')) ?></a>
             <?php if (\is_installed()): ?>
-                <a href="<?= \e(\url('/community/')) ?>">Comunidad</a>
+                <a href="<?= \e(\url('/community/')) ?>"><?= \e(\t('nav.community')) ?></a>
                 <?php if (PlatformSettings::enabled('publish_on_games')): ?>
-                    <a href="<?= \e(\url('/publish-on-games/')) ?>">Publicar</a>
+                    <a href="<?= \e(\url('/publish-on-games/')) ?>"><?= \e(\t('nav.publish')) ?></a>
                 <?php endif; ?>
                 <?php if (PlatformSettings::enabled('workshop')): ?>
-                    <a href="<?= \e(\url('/workshop/')) ?>">Workshop</a>
+                    <a href="<?= \e(\url('/workshop/')) ?>"><?= \e(\t('nav.workshop')) ?></a>
                 <?php endif; ?>
                 <?php if (PlatformSettings::enabled('client')): ?>
-                    <a href="<?= \e(\url('/client/')) ?>">Cliente</a>
+                    <a href="<?= \e(\url('/client/')) ?>"><?= \e(\t('nav.client')) ?></a>
                 <?php endif; ?>
-                <button type="button" class="theme-toggle" data-theme-toggle aria-label="Cambiar modo oscuro">Modo oscuro</button>
+                <button
+                    type="button"
+                    class="theme-toggle"
+                    data-theme-toggle
+                    data-dark-label="<?= \e(\t('nav.dark_mode')) ?>"
+                    data-light-label="<?= \e(\t('nav.light_mode')) ?>"
+                    aria-label="<?= \e(\t('nav.dark_mode')) ?>"
+                ><?= \e(\t('nav.dark_mode')) ?></button>
+                <span class="locale-switcher" aria-label="Language">
+                    <?php foreach (\available_locales() as $availableLocale => $label): ?>
+                        <a class="<?= $locale === $availableLocale ? 'locale-switcher__item locale-switcher__item--active' : 'locale-switcher__item' ?>" href="<?= \e(\locale_url((string) $availableLocale)) ?>">
+                            <?= \e(strtoupper((string) $availableLocale)) ?>
+                        </a>
+                    <?php endforeach; ?>
+                </span>
             <?php endif; ?>
             <?php if (!\is_installed()): ?>
-                <a href="<?= \e(\url('/install/')) ?>">Instalar</a>
+                <a href="<?= \e(\url('/install/')) ?>"><?= \e(\t('nav.install')) ?></a>
             <?php elseif ($user): ?>
-                <a href="<?= \e(\url('/profile/')) ?>">Perfil</a>
-                <a href="<?= \e(\url('/library/')) ?>">Biblioteca</a>
-                <a href="<?= \e(\url('/achievements/')) ?>">Logros</a>
-                <a href="<?= \e(\url('/inventory/')) ?>">Inventario</a>
-                <a href="<?= \e(\url('/messages/')) ?>">Mensajes</a>
+                <a href="<?= \e(\url('/profile/')) ?>"><?= \e(\t('nav.profile')) ?></a>
+                <a href="<?= \e(\url('/library/')) ?>"><?= \e(\t('nav.library')) ?></a>
+                <a href="<?= \e(\url('/achievements/')) ?>"><?= \e(\t('nav.achievements')) ?></a>
+                <a href="<?= \e(\url('/inventory/')) ?>"><?= \e(\t('nav.inventory')) ?></a>
+                <a href="<?= \e(\url('/friends/')) ?>"><?= \e(\t('nav.friends')) ?></a>
+                <a href="<?= \e(\url('/messages/')) ?>"><?= \e(\t('nav.messages')) ?></a>
                 <a
                     class="nav__notifications <?= $unreadNotifications > 0 ? 'nav__alert' : '' ?>"
                     href="<?= \e(\url('/notifications/')) ?>"
                     data-notifications-link
                     data-poll-url="<?= \e(\url('/notifications/poll/')) ?>"
                 >
-                    Notificaciones
+                    <?= \e(\t('nav.notifications')) ?>
                     <span class="nav__badge" data-notifications-badge <?= $unreadNotifications > 0 ? '' : 'hidden' ?>>
                         <?= \e((string) min($unreadNotifications, 99)) ?>
                     </span>
                 </a>
-                <a href="<?= \e(\url('/support/')) ?>">Soporte</a>
+                <a href="<?= \e(\url('/support/')) ?>"><?= \e(\t('nav.support')) ?></a>
                 <?php if (Auth::hasRole(['admin', 'superroot'])): ?>
-                    <a href="<?= \e(\url('/admin/')) ?>">Admin</a>
+                    <a href="<?= \e(\url('/admin/')) ?>"><?= \e(\t('nav.admin')) ?></a>
                 <?php endif; ?>
                 <?php if (Auth::hasRole(['supporter', 'admin', 'superroot'])): ?>
-                    <a href="<?= \e(\url('/supporter/')) ?>">Panel soporte</a>
+                    <a href="<?= \e(\url('/supporter/')) ?>"><?= \e(\t('nav.support_panel')) ?></a>
                 <?php endif; ?>
                 <?php if (Auth::hasRole('superroot')): ?>
-                    <a href="<?= \e(\url('/superroot/')) ?>">Superroot</a>
+                    <a href="<?= \e(\url('/superroot/')) ?>"><?= \e(\t('nav.superroot')) ?></a>
                 <?php endif; ?>
-                <a href="<?= \e(\url('/logout/')) ?>">Salir</a>
+                <a href="<?= \e(\url('/logout/')) ?>"><?= \e(\t('nav.logout')) ?></a>
             <?php else: ?>
-                <a href="<?= \e(\url('/login/')) ?>">Login</a>
-                <a href="<?= \e(\url('/register/')) ?>">Registro</a>
+                <a href="<?= \e(\url('/login/')) ?>"><?= \e(\t('nav.login')) ?></a>
+                <a href="<?= \e(\url('/register/')) ?>"><?= \e(\t('nav.register')) ?></a>
             <?php endif; ?>
         </nav>
     </div>
@@ -104,7 +126,7 @@ final class Page
 
     public static function footer(): void
     {
-        $footerText = 'JevzGames Infraestructura modular en PHP puro.';
+        $footerText = 'JevzGames modular infrastructure in plain PHP.';
         if (\is_installed()) {
             try {
                 $footerText = PlatformSettings::contentSettings()['footer_text'] ?: $footerText;
@@ -116,15 +138,19 @@ final class Page
 <footer class="site-footer">
     <span><?= \e($footerText) ?></span>
     <?php if (\is_installed()): ?>
-        <span> &middot; <a href="<?= \e(\url('/eula/')) ?>">EULA</a></span>
+        <span> &middot; <a href="<?= \e(\url('/eula/')) ?>"><?= \e(\t('nav.eula')) ?></a></span>
     <?php endif; ?>
 </footer>
 <script>
 (function () {
     var toggle = document.querySelector('[data-theme-toggle]');
     if (toggle) {
+        var darkLabel = toggle.getAttribute('data-dark-label') || 'Dark mode';
+        var lightLabel = toggle.getAttribute('data-light-label') || 'Light mode';
         var applyThemeLabel = function () {
-            toggle.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Modo claro' : 'Modo oscuro';
+            var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            toggle.textContent = isDark ? lightLabel : darkLabel;
+            toggle.setAttribute('aria-label', isDark ? lightLabel : darkLabel);
         };
         applyThemeLabel();
         toggle.addEventListener('click', function () {
@@ -193,6 +219,64 @@ final class Page
 
     window.setTimeout(poll, 1000);
     window.setInterval(poll, 5000);
+})();
+
+(function () {
+    var nodes = Array.prototype.slice.call(document.querySelectorAll('[data-presence-user-id][data-presence-poll-url]'));
+    if (nodes.length === 0) {
+        return;
+    }
+
+    function applyPresence(node, presence) {
+        if (!presence || !presence.status) {
+            return;
+        }
+
+        node.classList.remove('presence-pill--online', 'presence-pill--offline', 'presence-pill--in_game');
+        node.classList.add('presence-pill--' + presence.status);
+        node.textContent = presence.label || '';
+    }
+
+    function pollPresence() {
+        var seen = {};
+        nodes.forEach(function (node) {
+            var userId = node.getAttribute('data-presence-user-id');
+            var pollUrl = node.getAttribute('data-presence-poll-url');
+            if (!userId || !pollUrl) {
+                return;
+            }
+
+            var key = pollUrl + ':' + userId;
+            if (seen[key]) {
+                return;
+            }
+            seen[key] = true;
+
+            fetch(pollUrl + '?user_id=' + encodeURIComponent(userId), {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            })
+                .then(function (response) { return response.ok ? response.json() : null; })
+                .then(function (payload) {
+                    if (!payload || !payload.success || !payload.data || !payload.data.presence) {
+                        return;
+                    }
+
+                    nodes.forEach(function (candidate) {
+                        if (
+                            candidate.getAttribute('data-presence-user-id') === userId &&
+                            candidate.getAttribute('data-presence-poll-url') === pollUrl
+                        ) {
+                            applyPresence(candidate, payload.data.presence);
+                        }
+                    });
+                })
+                .catch(function () {});
+        });
+    }
+
+    window.setTimeout(pollPresence, 2000);
+    window.setInterval(pollPresence, 10000);
 })();
 </script>
 </body>

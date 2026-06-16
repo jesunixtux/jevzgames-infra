@@ -7,6 +7,7 @@ use App\Core\Page;
 use App\Models\Achievement;
 use App\Models\Friend;
 use App\Models\Game;
+use App\Models\Presence;
 use App\Models\PublicProfile;
 use App\Models\SocialSettings;
 use App\Security\Auth;
@@ -128,6 +129,7 @@ $canSeeBio = $isProfilePublic || $isSelf || SocialSettings::canSeePrivateSection
 $canSeeGames = $isProfilePublic || $isSelf || SocialSettings::canSeePrivateSection($targetId, $viewerId, 'games');
 $canSeeAchievements = $isProfilePublic || $isSelf || SocialSettings::canSeePrivateSection($targetId, $viewerId, 'achievements');
 $canSeeFriends = $isProfilePublic || $isSelf || SocialSettings::canSeePrivateSection($targetId, $viewerId, 'friends');
+$presence = Presence::forUser($targetId);
 $linkedGames = $canSeeGames ? array_values(array_filter(Game::userLinks($targetId), static function (array $game): bool {
     return in_array((string) $game['status'], Game::visibleStatuses(), true);
 })) : [];
@@ -149,6 +151,7 @@ Page::header('@' . (string) $profile['username']);
         </div>
         <div>
             <h1><?= e($profile['display_name']) ?></h1>
+            <p><span class="presence-pill presence-pill--<?= e((string) $presence['status']) ?>" data-presence-user-id="<?= e($targetId) ?>" data-presence-poll-url="<?= e(url('/api/presence/user/')) ?>"><?= e(Presence::label($presence)) ?></span></p>
             <p class="muted">@<?= e($profile['username']) ?> · Miembro desde <?= e(substr((string) $profile['created_at'], 0, 10)) ?></p>
             <?php if ($canSeeBio && trim((string) $profile['bio']) !== ''): ?>
                 <p><?= e($profile['bio']) ?></p>
@@ -292,9 +295,7 @@ Page::header('@' . (string) $profile['username']);
                                 <?php if (!empty($achievement['description'])): ?>
                                     <p><?= e($achievement['description']) ?></p>
                                 <?php endif; ?>
-                                <?php if ($canSeeAchievementMeta): ?>
-                                    <p class="muted"><?= e($achievement['game']['name'] ?? '') ?> &middot; <code><?= e($achievement['code']) ?></code></p>
-                                <?php endif; ?>
+                                <p class="muted"><?= e($achievement['game']['name'] ?? '') ?></p>
                             </div>
                             <?php if ($canSeeAchievementMeta): ?>
                                 <div class="achievement-item__meta">

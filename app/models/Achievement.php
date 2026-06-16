@@ -22,6 +22,7 @@ final class Achievement
                 code VARCHAR(100) NOT NULL,
                 title VARCHAR(160) NOT NULL,
                 description TEXT NULL,
+                translations_json LONGTEXT NULL,
                 image_path VARCHAR(255) NULL,
                 locked_image_path VARCHAR(255) NULL,
                 points INT UNSIGNED NOT NULL DEFAULT 0,
@@ -40,6 +41,7 @@ final class Achievement
         );
         self::addColumnIfMissing('game_achievements', 'image_path', 'VARCHAR(255) NULL AFTER description');
         self::addColumnIfMissing('game_achievements', 'locked_image_path', 'VARCHAR(255) NULL AFTER image_path');
+        self::addColumnIfMissing('game_achievements', 'translations_json', 'LONGTEXT NULL AFTER description');
 
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS user_achievements (
@@ -120,6 +122,7 @@ final class Achievement
                      code = :code,
                      title = :title,
                      description = :description,
+                     translations_json = :translations_json,
                      image_path = :image_path,
                      locked_image_path = :locked_image_path,
                      points = :points,
@@ -147,9 +150,9 @@ final class Achievement
         unset($insertData['id']);
         $stmt = $pdo->prepare(
             'INSERT INTO game_achievements
-                (game_id, code, title, description, image_path, locked_image_path, points, goal_value, is_secret, status, reward_json, config_json, created_at, updated_at)
+                (game_id, code, title, description, translations_json, image_path, locked_image_path, points, goal_value, is_secret, status, reward_json, config_json, created_at, updated_at)
              VALUES
-                (:game_id, :code, :title, :description, :image_path, :locked_image_path, :points, :goal_value, :is_secret, :status, :reward_json, :config_json, NOW(), NOW())'
+                (:game_id, :code, :title, :description, :translations_json, :image_path, :locked_image_path, :points, :goal_value, :is_secret, :status, :reward_json, :config_json, NOW(), NOW())'
         );
         try {
             $stmt->execute($insertData);
@@ -181,7 +184,8 @@ final class Achievement
     {
         self::ensureTables();
         $stmt = Database::pdo()->prepare(
-            'SELECT a.id, a.code, a.title, a.description, a.points, a.goal_value, a.is_secret, a.status,
+            'SELECT a.id, a.code, a.title, a.description, a.translations_json, a.image_path, a.locked_image_path,
+                    a.points, a.goal_value, a.is_secret, a.status,
                     a.reward_json, a.config_json,
                     ua.progress_value, ua.progress_json, ua.unlocked_at, ua.updated_at AS progress_updated_at
              FROM game_achievements a
@@ -204,7 +208,8 @@ final class Achievement
     {
         self::ensureTables();
         $stmt = Database::pdo()->prepare(
-            'SELECT a.id, a.code, a.title, a.description, a.points, a.goal_value, a.is_secret, a.status,
+            'SELECT a.id, a.code, a.title, a.description, a.translations_json, a.image_path, a.locked_image_path,
+                    a.points, a.goal_value, a.is_secret, a.status,
                     a.reward_json, a.config_json,
                     ua.progress_value, ua.progress_json, ua.unlocked_at, ua.updated_at AS progress_updated_at,
                     g.id AS game_id, g.name AS game_name, g.slug AS game_slug
@@ -297,8 +302,11 @@ final class Achievement
         $id = (int) ($input['achievement_id'] ?? 0);
         $gameId = (int) ($input['game_id'] ?? 0);
         $code = self::normalizeCode((string) ($input['code'] ?? ''));
-        $title = trim((string) ($input['title'] ?? ''));
-        $description = trim((string) ($input['description'] ?? ''));
+        $translations = self::translationsFromInput($input);
+        $defaultLocale = (string) PlatformSettings::languageSettings()['default_locale'];
+        $defaultTranslation = $translations[$defaultLocale] ?? reset($translations);
+        $title = trim((string) ($defaultTranslation['title'] ?? ''));
+        $description = trim((string) ($defaultTranslation['description'] ?? ''));
         $points = (int) ($input['points'] ?? 0);
         $imagePath = self::cleanAssetPath((string) ($input['image_path'] ?? ''));
         $lockedImagePath = self::cleanAssetPath((string) ($input['locked_image_path'] ?? ''));
@@ -342,6 +350,7 @@ final class Achievement
             'code' => $code,
             'title' => $title,
             'description' => $description !== '' ? $description : null,
+            'translations_json' => json_encode($translations, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             'image_path' => $imagePath,
             'locked_image_path' => $lockedImagePath,
             'points' => $points,
@@ -350,6 +359,98 @@ final class Achievement
             'status' => $status,
             'reward_json' => $rewardJson,
             'config_json' => $configJson,
+        ];
+    }
+
+    private static function translationsFromInput(array $input): array
+    {
+        $languageSettings = PlatformSettings::languageSettings();
+        $supported = $languageSettings['supported_locales'];
+        $defaultLocale = (string) $languageSettings['default_locale'];
+        $posted = isset($input['translations']) && is_array($input['translations']) ? $input['translations'] : [];
+        $flatTitle = trim((string) ($input['title'] ?? ''));
+        $flatDescription = trim((string) ($input['description'] ?? ''));
+        $translations = [];
+
+        foreach ($supported as $locale => $_label) {
+            $row = isset($posted[$locale]) && is_array($posted[$locale]) ? $posted[$locale] : [];
+            $title = trim((string) ($row['title'] ?? ''));
+            $description = trim((string) ($row['description'] ?? ''));
+
+            if ($title === '' && $locale === $defaultLocale) {
+                $title = $flatTitle;
+            }
+
+            if ($description === '' && $locale === $defaultLocale) {
+                $description = $flatDescription;
+            }
+
+            if ($title !== '' && strlen($title) > 160) {
+                throw new RuntimeException('El titulo del logro (' . $locale . ') no puede superar 160 caracteres.');
+            }
+
+            if ($description !== '' && strlen($description) > 5000) {
+                throw new RuntimeException('La descripcion del logro (' . $locale . ') es demasiado larga.');
+            }
+
+            $translations[$locale] = [
+                'title' => $title,
+                'description' => $description,
+            ];
+        }
+
+        if (trim((string) ($translations[$defaultLocale]['title'] ?? '')) === '') {
+            throw new RuntimeException('El titulo del logro debe existir en el idioma por defecto.');
+        }
+
+        return $translations;
+    }
+
+    public static function translationsForRow(array $row): array
+    {
+        $stored = Game::decodeJson($row['translations_json'] ?? null);
+        $languageSettings = PlatformSettings::languageSettings();
+        $translations = [];
+
+        foreach ($languageSettings['supported_locales'] as $locale => $_label) {
+            $storedRow = isset($stored[$locale]) && is_array($stored[$locale]) ? $stored[$locale] : [];
+            $translations[$locale] = [
+                'title' => (string) ($storedRow['title'] ?? ''),
+                'description' => (string) ($storedRow['description'] ?? ''),
+            ];
+        }
+
+        $fallbackLocale = (string) $languageSettings['default_locale'];
+        if (($translations[$fallbackLocale]['title'] ?? '') === '') {
+            $translations[$fallbackLocale]['title'] = (string) ($row['title'] ?? '');
+        }
+
+        if (($translations[$fallbackLocale]['description'] ?? '') === '') {
+            $translations[$fallbackLocale]['description'] = (string) ($row['description'] ?? '');
+        }
+
+        return $translations;
+    }
+
+    private static function localizedText(array $row): array
+    {
+        $translations = self::translationsForRow($row);
+        $languageSettings = PlatformSettings::languageSettings();
+        $locale = function_exists('current_locale') ? (string) \current_locale() : (string) $languageSettings['default_locale'];
+        if (!isset($translations[$locale])) {
+            $locale = (string) $languageSettings['default_locale'];
+        }
+
+        $selected = $translations[$locale] ?? [];
+        if (($selected['title'] ?? '') === '') {
+            $selected = $translations[$languageSettings['default_locale']] ?? $selected;
+        }
+
+        return [
+            'locale' => $locale,
+            'title' => (string) (($selected['title'] ?? '') !== '' ? $selected['title'] : ($row['title'] ?? '')),
+            'description' => (string) (($selected['description'] ?? '') !== '' ? $selected['description'] : ($row['description'] ?? '')),
+            'translations' => $translations,
         ];
     }
 
@@ -406,12 +507,15 @@ final class Achievement
     {
         $goal = max(1.0, (float) ($row['goal_value'] ?? 1));
         $progress = min($goal, max(0.0, (float) ($row['progress_value'] ?? 0)));
+        $localized = self::localizedText($row);
 
         return [
             'id' => (int) $row['id'],
             'code' => (string) $row['code'],
-            'title' => (string) $row['title'],
-            'description' => $row['description'] ?? null,
+            'locale' => $localized['locale'],
+            'title' => $localized['title'],
+            'description' => $localized['description'] !== '' ? $localized['description'] : null,
+            'translations' => $localized['translations'],
             'image_path' => $row['image_path'] ?? null,
             'locked_image_path' => $row['locked_image_path'] ?? null,
             'points' => (int) $row['points'],

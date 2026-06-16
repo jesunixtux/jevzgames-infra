@@ -16,6 +16,10 @@ final class PlatformSettings
         'client.download_url' => ['', 'string'],
         'client.min_version' => ['0.1.0', 'string'],
         'client.config_json' => ['', 'json'],
+        'i18n.default_locale' => ['en', 'string'],
+        'i18n.supported_locales_json' => ['{"en":"English","es":"Español"}', 'json'],
+        'i18n.enabled_locales_json' => ['["en","es"]', 'json'],
+        'content.translations_json' => ['{"en":{"home_title":"JevzGames Infra","home_intro":"Modular monolithic infrastructure for users, games, APIs and internal panels.","games_intro":"Public catalog of games registered in the infrastructure.","library_intro":"Games linked or licensed to your account.","footer_text":"JevzGames modular infrastructure in plain PHP."},"es":{"home_title":"JevzGames Infra","home_intro":"Infraestructura monolitica modular para usuarios, juegos, APIs y paneles internos.","games_intro":"Catalogo publico de juegos registrados en la infraestructura.","library_intro":"Lista de juegos vinculados o licenciados en tu cuenta.","footer_text":"JevzGames Infraestructura modular en PHP puro."}}', 'json'],
         'content.home_title' => ['JevzGames Infra', 'string'],
         'content.home_intro' => ['Infraestructura monolitica modular para usuarios, juegos, APIs y paneles internos.', 'string'],
         'content.games_intro' => ['Catalogo publico de juegos registrados en la infraestructura.', 'string'],
@@ -42,6 +46,7 @@ final class PlatformSettings
         'legal.eula_version' => ['1.0', 'string'],
         'legal.eula_title' => ['EULA JevzGames', 'string'],
         'legal.eula_body' => ['Escribe aqui los terminos de uso y licencia de la plataforma.', 'string'],
+        'legal.eula_translations_json' => ['{"en":{"version":"1.0","title":"JevzGames EULA","body":"Write the platform terms of use and license here."},"es":{"version":"1.0","title":"EULA JevzGames","body":"Escribe aqui los terminos de uso y licencia de la plataforma."}}', 'json'],
     ];
 
     public static function values(): array
@@ -71,6 +76,70 @@ final class PlatformSettings
         $values = self::values();
 
         return !empty($values[$key]);
+    }
+
+    public static function supportedLocales(): array
+    {
+        $fallback = [
+            'en' => 'English',
+            'es' => 'Español',
+        ];
+
+        try {
+            self::ensureDefaults();
+            $raw = self::rawSettingValue('i18n.supported_locales_json');
+            $decoded = json_decode($raw !== '' ? $raw : '{}', true);
+            if (!is_array($decoded)) {
+                return $fallback;
+            }
+
+            $locales = [];
+            foreach ($decoded as $locale => $label) {
+                $locale = self::normalizeLocale((string) $locale);
+                $label = trim((string) $label);
+                if ($locale !== '' && $label !== '' && strlen($label) <= 80) {
+                    $locales[$locale] = $label;
+                }
+            }
+
+            return $locales !== [] ? $locales : $fallback;
+        } catch (\Throwable) {
+            return $fallback;
+        }
+    }
+
+    public static function languageSettings(): array
+    {
+        $values = self::values();
+        $supported = self::supportedLocales();
+        $enabled = [];
+        $rawEnabled = is_array($values['i18n.enabled_locales_json'] ?? null) ? $values['i18n.enabled_locales_json'] : [];
+
+        foreach ($rawEnabled as $locale) {
+            $locale = self::normalizeLocale((string) $locale);
+            if ($locale !== '' && isset($supported[$locale]) && !in_array($locale, $enabled, true)) {
+                $enabled[] = $locale;
+            }
+        }
+
+        if ($enabled === []) {
+            $enabled = ['en', 'es'];
+        }
+
+        $default = self::normalizeLocale((string) ($values['i18n.default_locale'] ?? 'en'));
+        if (!isset($supported[$default])) {
+            $default = 'en';
+        }
+
+        if (!in_array($default, $enabled, true)) {
+            array_unshift($enabled, $default);
+        }
+
+        return [
+            'default_locale' => $default,
+            'enabled_locales' => array_values($enabled),
+            'supported_locales' => $supported,
+        ];
     }
 
     public static function save(array $input): void
@@ -134,9 +203,10 @@ final class PlatformSettings
         $smtpTimeout = (int) ($input['smtp_timeout'] ?? 15);
         $eulaEnabled = isset($input['eula_enabled']) ? '1' : '0';
         $eulaRequired = isset($input['eula_required']) ? '1' : '0';
-        $eulaVersion = trim((string) ($input['eula_version'] ?? '1.0'));
-        $eulaTitle = trim((string) ($input['eula_title'] ?? 'EULA JevzGames'));
-        $eulaBody = trim((string) ($input['eula_body'] ?? ''));
+        $eulaTranslations = self::eulaTranslationsFromInput($input, $eulaEnabled === '1');
+        $languageSettings = self::languageSettings();
+        $defaultLocale = (string) $languageSettings['default_locale'];
+        $defaultEula = $eulaTranslations[$defaultLocale] ?? reset($eulaTranslations);
 
         if ($delivery === 'mail') {
             $delivery = 'smtp';
@@ -188,18 +258,6 @@ final class PlatformSettings
             }
         }
 
-        if ($eulaVersion === '' || strlen($eulaVersion) > 40) {
-            throw new RuntimeException('La version del EULA debe tener entre 1 y 40 caracteres.');
-        }
-
-        if ($eulaTitle === '' || strlen($eulaTitle) > 180) {
-            throw new RuntimeException('El titulo del EULA debe tener entre 1 y 180 caracteres.');
-        }
-
-        if ($eulaEnabled === '1' && $eulaBody === '') {
-            throw new RuntimeException('El texto del EULA no puede estar vacio si el EULA esta activo.');
-        }
-
         $settings = [
             'auth.email_verification_enabled' => [$emailEnabled, 'boolean'],
             'auth.email_verification_required' => [$emailRequired, 'boolean'],
@@ -217,9 +275,10 @@ final class PlatformSettings
             'mail.smtp_timeout' => [(string) $smtpTimeout, 'integer'],
             'legal.eula_enabled' => [$eulaEnabled, 'boolean'],
             'legal.eula_required' => [$eulaRequired, 'boolean'],
-            'legal.eula_version' => [$eulaVersion, 'string'],
-            'legal.eula_title' => [$eulaTitle, 'string'],
-            'legal.eula_body' => [$eulaBody, 'string'],
+            'legal.eula_version' => [(string) ($defaultEula['version'] ?? '1.0'), 'string'],
+            'legal.eula_title' => [(string) ($defaultEula['title'] ?? 'JevzGames EULA'), 'string'],
+            'legal.eula_body' => [(string) ($defaultEula['body'] ?? ''), 'string'],
+            'legal.eula_translations_json' => [json_encode($eulaTranslations, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'json'],
         ];
 
         self::upsert($settings);
@@ -227,32 +286,40 @@ final class PlatformSettings
 
     public static function saveContent(array $input): void
     {
-        $homeTitle = self::cleanSettingText((string) ($input['home_title'] ?? 'JevzGames Infra'), 160, 'El titulo de inicio');
-        $homeIntro = self::cleanSettingText((string) ($input['home_intro'] ?? ''), 1000, 'El texto de inicio');
-        $gamesIntro = self::cleanSettingText((string) ($input['games_intro'] ?? ''), 500, 'El texto del catalogo');
-        $libraryIntro = self::cleanSettingText((string) ($input['library_intro'] ?? ''), 500, 'El texto de biblioteca');
-        $footerText = self::cleanSettingText((string) ($input['footer_text'] ?? ''), 240, 'El footer');
+        $languageSettings = self::languageSettingsFromInput($input);
+        $translations = self::contentTranslationsFromInput($input);
+        $defaultLocale = (string) $languageSettings['default_locale'];
+        $defaultContent = $translations[$defaultLocale] ?? reset($translations);
 
         self::upsert([
-            'content.home_title' => [$homeTitle !== '' ? $homeTitle : 'JevzGames Infra', 'string'],
-            'content.home_intro' => [$homeIntro, 'string'],
-            'content.games_intro' => [$gamesIntro, 'string'],
-            'content.library_intro' => [$libraryIntro, 'string'],
-            'content.footer_text' => [$footerText, 'string'],
+            'i18n.default_locale' => [$defaultLocale, 'string'],
+            'i18n.supported_locales_json' => [json_encode($languageSettings['supported_locales'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'json'],
+            'i18n.enabled_locales_json' => [json_encode($languageSettings['enabled_locales'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'json'],
+            'content.translations_json' => [json_encode($translations, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'json'],
+            'content.home_title' => [(string) ($defaultContent['home_title'] ?? 'JevzGames Infra'), 'string'],
+            'content.home_intro' => [(string) ($defaultContent['home_intro'] ?? ''), 'string'],
+            'content.games_intro' => [(string) ($defaultContent['games_intro'] ?? ''), 'string'],
+            'content.library_intro' => [(string) ($defaultContent['library_intro'] ?? ''), 'string'],
+            'content.footer_text' => [(string) ($defaultContent['footer_text'] ?? ''), 'string'],
         ]);
     }
 
-    public static function contentSettings(): array
+    public static function contentSettings(?string $locale = null): array
+    {
+        $translations = self::contentTranslations();
+        $settings = self::languageSettings();
+        $locale = self::selectLocale($locale, $settings);
+
+        return $translations[$locale] ?? $translations[$settings['default_locale']] ?? reset($translations);
+    }
+
+    public static function contentTranslations(): array
     {
         $values = self::values();
+        $defaults = self::defaultContentTranslations($values);
+        $stored = is_array($values['content.translations_json'] ?? null) ? $values['content.translations_json'] : [];
 
-        return [
-            'home_title' => (string) $values['content.home_title'],
-            'home_intro' => (string) $values['content.home_intro'],
-            'games_intro' => (string) $values['content.games_intro'],
-            'library_intro' => (string) $values['content.library_intro'],
-            'footer_text' => (string) $values['content.footer_text'],
-        ];
+        return self::mergeLocalePayload($defaults, $stored, ['home_title', 'home_intro', 'games_intro', 'library_intro', 'footer_text']);
     }
 
     public static function saveMaintenance(array $input): void
@@ -321,17 +388,31 @@ final class PlatformSettings
         return !empty($values['auth.email_verification_enabled']) && !empty($values['auth.email_verification_required']);
     }
 
-    public static function eulaSettings(): array
+    public static function eulaSettings(?string $locale = null): array
     {
         $values = self::values();
+        $translations = self::eulaTranslations();
+        $languageSettings = self::languageSettings();
+        $locale = self::selectLocale($locale, $languageSettings);
+        $translation = $translations[$locale] ?? $translations[$languageSettings['default_locale']] ?? reset($translations);
 
         return [
             'enabled' => (bool) $values['legal.eula_enabled'],
             'required' => (bool) $values['legal.eula_required'],
-            'version' => (string) $values['legal.eula_version'],
-            'title' => (string) $values['legal.eula_title'],
-            'body' => (string) $values['legal.eula_body'],
+            'locale' => $locale,
+            'version' => (string) ($translation['version'] ?? $values['legal.eula_version']),
+            'title' => (string) ($translation['title'] ?? $values['legal.eula_title']),
+            'body' => (string) ($translation['body'] ?? $values['legal.eula_body']),
         ];
+    }
+
+    public static function eulaTranslations(): array
+    {
+        $values = self::values();
+        $defaults = self::defaultEulaTranslations($values);
+        $stored = is_array($values['legal.eula_translations_json'] ?? null) ? $values['legal.eula_translations_json'] : [];
+
+        return self::mergeLocalePayload($defaults, $stored, ['version', 'title', 'body']);
     }
 
     public static function eulaRequired(): bool
@@ -358,8 +439,231 @@ final class PlatformSettings
                 'redeem' => \url('/api/client/redeem/'),
                 'inventory' => \url('/api/client/inventory/'),
                 'license_check' => \url('/api/game-license/check/'),
+                'presence' => \url('/api/client/presence/'),
             ],
         ];
+    }
+
+    private static function normalizeLocale(string $locale): string
+    {
+        $locale = strtolower(trim(str_replace('_', '-', $locale)));
+        $locale = substr($locale, 0, 2);
+
+        return preg_match('/^[a-z]{2}$/', $locale) ? $locale : '';
+    }
+
+    private static function selectLocale(?string $locale, array $settings): string
+    {
+        if ($locale === null && function_exists('current_locale')) {
+            $locale = (string) \current_locale();
+        }
+
+        $locale = self::normalizeLocale((string) $locale);
+        if ($locale !== '' && in_array($locale, $settings['enabled_locales'] ?? [], true)) {
+            return $locale;
+        }
+
+        return (string) ($settings['default_locale'] ?? 'en');
+    }
+
+    private static function languageSettingsFromInput(array $input): array
+    {
+        $supported = self::localesFromInput($input);
+        $default = self::normalizeLocale((string) ($input['default_locale'] ?? 'en'));
+        if (!isset($supported[$default])) {
+            $default = 'en';
+        }
+
+        $enabled = [];
+        $rawEnabled = isset($input['enabled_locales']) && is_array($input['enabled_locales']) ? $input['enabled_locales'] : ['en', 'es'];
+        foreach ($rawEnabled as $locale) {
+            $locale = self::normalizeLocale((string) $locale);
+            if ($locale !== '' && isset($supported[$locale]) && !in_array($locale, $enabled, true)) {
+                $enabled[] = $locale;
+            }
+        }
+
+        if (!in_array($default, $enabled, true)) {
+            array_unshift($enabled, $default);
+        }
+
+        return [
+            'default_locale' => $default,
+            'enabled_locales' => array_values($enabled),
+            'supported_locales' => $supported,
+        ];
+    }
+
+    private static function localesFromInput(array $input): array
+    {
+        $supported = self::supportedLocales();
+        $raw = trim((string) ($input['supported_locales_text'] ?? ''));
+        if ($raw === '') {
+            return $supported;
+        }
+
+        $parsed = [];
+        foreach (preg_split('/\R+/', $raw) ?: [] as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+
+            if (str_contains($line, '=')) {
+                [$locale, $label] = explode('=', $line, 2);
+            } else {
+                $locale = $line;
+                $label = strtoupper($line);
+            }
+
+            $locale = self::normalizeLocale((string) $locale);
+            $label = self::cleanSettingText((string) $label, 80, 'El nombre del idioma');
+            if ($locale === '' || $label === '') {
+                throw new RuntimeException('Cada idioma debe usar formato codigo=Nombre, por ejemplo en=English.');
+            }
+
+            $parsed[$locale] = $label;
+        }
+
+        if (!isset($parsed['en'])) {
+            $parsed = ['en' => 'English'] + $parsed;
+        }
+
+        if (!isset($parsed['es'])) {
+            $parsed['es'] = 'Español';
+        }
+
+        if (count($parsed) > 12) {
+            throw new RuntimeException('Puedes configurar hasta 12 idiomas.');
+        }
+
+        return $parsed;
+    }
+
+    private static function contentTranslationsFromInput(array $input): array
+    {
+        $current = self::contentTranslations();
+        $posted = isset($input['content']) && is_array($input['content']) ? $input['content'] : [];
+        $flatFallback = $posted === [] ? [
+            'home_title' => $input['home_title'] ?? null,
+            'home_intro' => $input['home_intro'] ?? null,
+            'games_intro' => $input['games_intro'] ?? null,
+            'library_intro' => $input['library_intro'] ?? null,
+            'footer_text' => $input['footer_text'] ?? null,
+        ] : [];
+        $limits = [
+            'home_title' => [160, 'El titulo de inicio'],
+            'home_intro' => [1000, 'El texto de inicio'],
+            'games_intro' => [500, 'El texto del catalogo'],
+            'library_intro' => [500, 'El texto de biblioteca'],
+            'footer_text' => [240, 'El footer'],
+        ];
+        $translations = [];
+
+        foreach (self::supportedLocales() as $locale => $_label) {
+            $row = isset($posted[$locale]) && is_array($posted[$locale]) ? $posted[$locale] : [];
+            if ($flatFallback !== [] && $locale === self::languageSettings()['default_locale']) {
+                $row = array_filter($flatFallback, static fn ($value): bool => $value !== null);
+            }
+
+            foreach ($limits as $key => [$max, $label]) {
+                $value = array_key_exists($key, $row) ? (string) $row[$key] : (string) ($current[$locale][$key] ?? '');
+                $translations[$locale][$key] = self::cleanSettingText($value, $max, $label . ' (' . $locale . ')');
+            }
+
+            if ($translations[$locale]['home_title'] === '') {
+                $translations[$locale]['home_title'] = 'JevzGames Infra';
+            }
+        }
+
+        return $translations;
+    }
+
+    private static function eulaTranslationsFromInput(array $input, bool $requireBody): array
+    {
+        $current = self::eulaTranslations();
+        $posted = isset($input['eula']) && is_array($input['eula']) ? $input['eula'] : [];
+        $flatFallback = $posted === [] ? [
+            'version' => $input['eula_version'] ?? null,
+            'title' => $input['eula_title'] ?? null,
+            'body' => $input['eula_body'] ?? null,
+        ] : [];
+        $languageSettings = self::languageSettings();
+        $translations = [];
+
+        foreach (self::supportedLocales() as $locale => $_label) {
+            $row = isset($posted[$locale]) && is_array($posted[$locale]) ? $posted[$locale] : [];
+            if ($flatFallback !== [] && $locale === $languageSettings['default_locale']) {
+                $row = array_filter($flatFallback, static fn ($value): bool => $value !== null);
+            }
+
+            $version = self::cleanSettingText((string) ($row['version'] ?? $current[$locale]['version'] ?? '1.0'), 40, 'La version del EULA (' . $locale . ')');
+            $title = self::cleanSettingText((string) ($row['title'] ?? $current[$locale]['title'] ?? 'JevzGames EULA'), 180, 'El titulo del EULA (' . $locale . ')');
+            $body = trim((string) ($row['body'] ?? $current[$locale]['body'] ?? ''));
+
+            if ($version === '') {
+                throw new RuntimeException('La version del EULA (' . $locale . ') debe tener entre 1 y 40 caracteres.');
+            }
+
+            if ($title === '') {
+                throw new RuntimeException('El titulo del EULA (' . $locale . ') debe tener entre 1 y 180 caracteres.');
+            }
+
+            if ($requireBody && in_array($locale, $languageSettings['enabled_locales'], true) && $body === '') {
+                throw new RuntimeException('El texto del EULA (' . $locale . ') no puede estar vacio si el EULA esta activo.');
+            }
+
+            $translations[$locale] = [
+                'version' => $version,
+                'title' => $title,
+                'body' => $body,
+            ];
+        }
+
+        return $translations;
+    }
+
+    private static function defaultContentTranslations(array $values): array
+    {
+        $defaults = json_decode(self::DEFAULTS['content.translations_json'][0], true);
+        $defaults = is_array($defaults) ? $defaults : [];
+        $defaults['es'] = [
+            'home_title' => (string) ($values['content.home_title'] ?? $defaults['es']['home_title'] ?? 'JevzGames Infra'),
+            'home_intro' => (string) ($values['content.home_intro'] ?? $defaults['es']['home_intro'] ?? ''),
+            'games_intro' => (string) ($values['content.games_intro'] ?? $defaults['es']['games_intro'] ?? ''),
+            'library_intro' => (string) ($values['content.library_intro'] ?? $defaults['es']['library_intro'] ?? ''),
+            'footer_text' => (string) ($values['content.footer_text'] ?? $defaults['es']['footer_text'] ?? ''),
+        ];
+
+        return $defaults;
+    }
+
+    private static function defaultEulaTranslations(array $values): array
+    {
+        $defaults = json_decode(self::DEFAULTS['legal.eula_translations_json'][0], true);
+        $defaults = is_array($defaults) ? $defaults : [];
+        $defaults['es'] = [
+            'version' => (string) ($values['legal.eula_version'] ?? $defaults['es']['version'] ?? '1.0'),
+            'title' => (string) ($values['legal.eula_title'] ?? $defaults['es']['title'] ?? 'EULA JevzGames'),
+            'body' => (string) ($values['legal.eula_body'] ?? $defaults['es']['body'] ?? ''),
+        ];
+
+        return $defaults;
+    }
+
+    private static function mergeLocalePayload(array $defaults, array $stored, array $keys): array
+    {
+        $merged = [];
+        foreach (self::supportedLocales() as $locale => $_label) {
+            $base = isset($defaults[$locale]) && is_array($defaults[$locale]) ? $defaults[$locale] : [];
+            $row = isset($stored[$locale]) && is_array($stored[$locale]) ? $stored[$locale] : [];
+
+            foreach ($keys as $key) {
+                $merged[$locale][$key] = (string) ($row[$key] ?? $base[$key] ?? '');
+            }
+        }
+
+        return $merged;
     }
 
     private static function ensureDefaults(): void

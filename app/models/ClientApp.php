@@ -62,6 +62,10 @@ final class ClientApp
             'client_name' => trim($clientName) !== '' ? substr(trim($clientName), 0, 120) : null,
         ]);
         User::touchLastLogin((int) $user['id']);
+        try {
+            Presence::set((int) $user['id'], 'online', null, 'client');
+        } catch (\Throwable) {
+        }
 
         return [
             'client_token' => $token,
@@ -95,6 +99,10 @@ final class ClientApp
         }
 
         Database::pdo()->prepare('UPDATE client_sessions SET last_used_at = NOW() WHERE id = :id')->execute(['id' => (int) $session['id']]);
+        try {
+            Presence::touch((int) $session['user_id'], 'client');
+        } catch (\Throwable) {
+        }
 
         return $session;
     }
@@ -172,6 +180,21 @@ final class ClientApp
     public static function revoke(string $token): void
     {
         self::ensureTables();
+        $stmt = Database::pdo()->prepare(
+            'SELECT user_id
+             FROM client_sessions
+             WHERE token_hash = :token_hash
+             LIMIT 1'
+        );
+        $stmt->execute(['token_hash' => self::hashToken(trim($token))]);
+        $userId = $stmt->fetchColumn();
+        if ($userId !== false) {
+            try {
+                Presence::offline((int) $userId);
+            } catch (\Throwable) {
+            }
+        }
+
         Database::pdo()->prepare(
             'UPDATE client_sessions SET status = "revoked", revoked_at = NOW() WHERE token_hash = :token_hash'
         )->execute(['token_hash' => self::hashToken(trim($token))]);

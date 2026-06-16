@@ -139,8 +139,8 @@ Page::header('Logros');
                     <?php foreach ($group['achievements'] as $achievement): ?>
                         <?php
                         $unlocked = !empty($achievement['unlocked']);
-                        $title = (!$unlocked && !empty($achievement['is_secret'])) ? 'Logro oculto' : (string) $achievement['title'];
-                        $description = (!$unlocked && !empty($achievement['is_secret'])) ? 'Este logro es secreto hasta desbloquearlo.' : (string) ($achievement['description'] ?? '');
+                        $title = (!$unlocked && !empty($achievement['is_secret'])) ? t('achievements.hidden_title') : (string) $achievement['title'];
+                        $description = (!$unlocked && !empty($achievement['is_secret'])) ? t('achievements.hidden_description') : (string) ($achievement['description'] ?? '');
                         $image = achievement_page_image($unlocked ? ($achievement['image_path'] ?? '') : ($achievement['locked_image_path'] ?? $achievement['image_path'] ?? ''));
                         ?>
                         <article class="achievement-item">
@@ -152,7 +152,7 @@ Page::header('Logros');
                                 <?php if ($description !== ''): ?>
                                     <p><?= e($description) ?></p>
                                 <?php endif; ?>
-                                <p class="muted"><code><?= e($achievement['code']) ?></code> &middot; <?= e($achievement['progress_percent']) ?>%</p>
+                                <p class="muted"><?= e($achievement['progress_percent']) ?>%</p>
                                 <progress value="<?= e($achievement['progress_value']) ?>" max="<?= e($achievement['goal_value']) ?>"></progress>
                             </div>
                             <div class="achievement-item__meta">

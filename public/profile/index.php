@@ -10,6 +10,7 @@ use App\Models\Friend;
 use App\Models\Game;
 use App\Models\Inventory;
 use App\Models\PlatformSettings;
+use App\Models\Presence;
 use App\Models\PublicProfile;
 use App\Models\SocialSettings;
 use App\Models\User;
@@ -84,6 +85,7 @@ if (request_is_post()) {
 $profile = PublicProfile::findByUserId($userId);
 $avatarUrl = PublicProfile::avatarUrl($profile['avatar_path'] ?? '');
 $publicProfileUrl = '/user/@' . rawurlencode((string) ($profile['username'] ?? $user['username'] ?? ''));
+$presence = Presence::forUser($userId);
 $linkedGames = Game::userLinks($userId);
 $unlockedAchievements = Achievement::unlockedForUser($userId);
 $achievementPoints = array_sum(array_map(static fn (array $achievement): int => (int) $achievement['points'], $unlockedAchievements));
@@ -111,6 +113,7 @@ Page::header('Perfil');
         </div>
         <div>
             <h1><?= e($profile['display_name'] ?? $user['username'] ?? 'Usuario') ?></h1>
+            <p><span class="presence-pill presence-pill--<?= e((string) $presence['status']) ?>" data-presence-user-id="<?= e($userId) ?>" data-presence-poll-url="<?= e(url('/api/presence/user/')) ?>"><?= e(Presence::label($presence)) ?></span></p>
             <p class="muted">@<?= e($profile['username'] ?? $user['username'] ?? '') ?> · <?= e($profile['visibility'] ?? 'public') ?></p>
             <div class="actions">
                 <a class="button button--secondary" href="<?= e(url($publicProfileUrl)) ?>">Ver perfil publico</a>
@@ -290,9 +293,7 @@ Page::header('Perfil');
                         <?php if (!empty($achievement['description'])): ?>
                             <p><?= e($achievement['description']) ?></p>
                         <?php endif; ?>
-                        <?php if ($canSeeAchievementMeta): ?>
-                            <p class="muted"><?= e($achievement['game']['name'] ?? '') ?> &middot; <code><?= e($achievement['code']) ?></code></p>
-                        <?php endif; ?>
+                        <p class="muted"><?= e($achievement['game']['name'] ?? '') ?></p>
                     </div>
                     <?php if ($canSeeAchievementMeta): ?>
                         <div class="achievement-item__meta">
@@ -421,9 +422,9 @@ Page::header('Perfil');
             <div>
                 <dt>EULA</dt>
                 <dd>
-                    Version vigente <?= e($eulaSettings['version']) ?>.
+                    Version vigente <?= e($eulaSettings['version']) ?> (<?= e(strtoupper((string) $eulaSettings['locale'])) ?>).
                     <?php if ($latestAgreement): ?>
-                        Ultima aceptada <?= e($latestAgreement['version']) ?> el <?= e($latestAgreement['accepted_at']) ?>.
+                        Ultima aceptada <?= e($latestAgreement['version']) ?> <?= !empty($latestAgreement['locale']) ? '(' . e(strtoupper((string) $latestAgreement['locale'])) . ')' : '' ?> el <?= e($latestAgreement['accepted_at']) ?>.
                     <?php else: ?>
                         Sin aceptacion registrada.
                     <?php endif; ?>

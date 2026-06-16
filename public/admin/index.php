@@ -10,6 +10,7 @@ use App\Models\CloudSave;
 use App\Models\Game;
 use App\Models\GameDatabase;
 use App\Models\GameBuild;
+use App\Models\PlatformSettings;
 use App\Models\PublishRequest;
 use App\Models\Support;
 use App\Models\Workshop;
@@ -196,6 +197,7 @@ $publishStatus = (string) ($_GET['publish_status'] ?? 'pending');
 $publishRequests = PublishRequest::all($publishStatus);
 $apiKeys = Admin::apiKeys();
 $achievements = Achievement::list();
+$languageSettings = PlatformSettings::languageSettings();
 $achievementsByGameId = [];
 foreach ($achievements as $achievement) {
     $achievementsByGameId[(int) $achievement['game_id']][] = $achievement;
@@ -755,6 +757,7 @@ Page::header('Admin');
 <?php endif; ?>
 
 <?php if ($section === 'achievements'): ?>
+    <?php $editingAchievementTranslations = $editingAchievement ? Achievement::translationsForRow($editingAchievement) : []; ?>
     <section class="panel">
         <h2><?= $editingAchievement ? 'Editar logro' : 'Nuevo logro' ?></h2>
         <form class="form" method="post">
@@ -775,10 +778,6 @@ Page::header('Admin');
                 <div class="field">
                     <label for="achievement_code">Codigo</label>
                     <input id="achievement_code" name="code" value="<?= e($editingAchievement['code'] ?? '') ?>" maxlength="100" placeholder="first_win" required>
-                </div>
-                <div class="field">
-                    <label for="achievement_title">Titulo</label>
-                    <input id="achievement_title" name="title" value="<?= e($editingAchievement['title'] ?? '') ?>" maxlength="160" required>
                 </div>
                 <div class="field">
                     <label for="achievement_status">Estado</label>
@@ -812,10 +811,26 @@ Page::header('Admin');
                 </label>
             </div>
 
-            <div class="field">
-                <label for="achievement_description">Descripcion</label>
-                <textarea id="achievement_description" name="description" rows="3" maxlength="5000"><?= e($editingAchievement['description'] ?? '') ?></textarea>
-            </div>
+            <h3>Textos por idioma</h3>
+            <?php foreach ($languageSettings['supported_locales'] as $locale => $label): ?>
+                <?php $translation = $editingAchievementTranslations[$locale] ?? ['title' => '', 'description' => '']; ?>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="achievement_<?= e($locale) ?>_title">Titulo <?= e($label) ?></label>
+                        <input
+                            id="achievement_<?= e($locale) ?>_title"
+                            name="translations[<?= e($locale) ?>][title]"
+                            value="<?= e($translation['title'] ?? '') ?>"
+                            maxlength="160"
+                            <?= $locale === $languageSettings['default_locale'] ? 'required' : '' ?>
+                        >
+                    </div>
+                    <div class="field">
+                        <label for="achievement_<?= e($locale) ?>_description">Descripcion <?= e($label) ?></label>
+                        <textarea id="achievement_<?= e($locale) ?>_description" name="translations[<?= e($locale) ?>][description]" rows="3" maxlength="5000"><?= e($translation['description'] ?? '') ?></textarea>
+                    </div>
+                </div>
+            <?php endforeach; ?>
 
             <div class="form-grid">
                 <div class="field">

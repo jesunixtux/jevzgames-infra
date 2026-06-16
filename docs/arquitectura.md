@@ -131,9 +131,9 @@ Cuando el usuario aprueba la solicitud web, la plataforma:
 
 1. Crea o confirma la relacion en `user_games`.
 2. Marca el device code como autorizado.
-3. Entrega a Unity un token Bearer de 30 dias.
+3. Entrega a la app compatible un token Bearer persistente.
 
-Unity valida ese token con `/api/user-profile/`. Si el usuario queda bloqueado, el juego se archiva o el token expira, la API rechaza el token.
+La app valida ese token con `/api/user-profile/`. Si el usuario queda bloqueado, el juego se archiva, el token se revoca o el usuario desvincula el juego, la API rechaza el token. Mientras la app use APIs autenticadas, la presencia publica muestra que el usuario esta jugando ese juego.
 
 Para usuarios normales, la pantalla de autorizacion autoaprueba el vinculo despues de iniciar sesion. Admin y superroot mantienen aprobacion manual para revisar flujos de prueba.
 

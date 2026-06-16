@@ -20,7 +20,7 @@ if (request_is_post() && (string) ($_POST['action'] ?? '') === 'lookup') {
 
 if ($device && !Auth::check()) {
     $_SESSION['after_login_redirect'] = '/oauth/authorize/?user_code=' . rawurlencode($userCode);
-    flash('message', 'Inicia sesion para vincular el juego a tu cuenta.');
+        flash('message', t('oauth.requires_access'));
     redirect_to('/login/');
 }
 
@@ -30,7 +30,7 @@ if ($device && Auth::check() && $device['status'] === 'pending' && !Auth::hasRol
     try {
         OAuth::approveDevice((int) $device['id'], $userId);
         ActivityLogger::info('oauth_device_auto_approved', ['user_id' => $userId, 'game_id' => (int) $device['game_id'], 'device_id' => (int) $device['id']]);
-        flash('message', 'Juego vinculado automaticamente. Ya puedes volver a la app compatible.');
+        flash('message', t('oauth.approved'));
     } catch (Throwable $exception) {
         flash('error', $exception->getMessage());
     }
@@ -51,11 +51,11 @@ if (request_is_post() && $device && Auth::check()) {
         if ($action === 'approve') {
             OAuth::approveDevice((int) $device['id'], $userId);
             ActivityLogger::info('oauth_device_approved', ['user_id' => $userId, 'game_id' => (int) $device['game_id'], 'device_id' => (int) $device['id']]);
-            flash('message', 'Juego vinculado. Ya puedes volver a la app compatible.');
+            flash('message', t('oauth.approved'));
         } elseif ($action === 'deny') {
             OAuth::denyDevice((int) $device['id'], $userId);
             ActivityLogger::info('oauth_device_denied', ['user_id' => $userId, 'game_id' => (int) $device['game_id'], 'device_id' => (int) $device['id']]);
-            flash('message', 'Solicitud rechazada.');
+            flash('message', t('oauth.denied'));
         } else {
             throw new RuntimeException('Accion no valida.');
         }
@@ -66,65 +66,65 @@ if (request_is_post() && $device && Auth::check()) {
     redirect_to('/oauth/authorize/?user_code=' . rawurlencode($userCode));
 }
 
-Page::header('Autorizar juego');
+Page::header(t('oauth.authorize_title'));
 ?>
 <section class="panel panel--narrow">
-    <h1>Autorizar juego</h1>
+    <h1><?= e(t('oauth.authorize_title')) ?></h1>
 
     <?php if ($userCode === ''): ?>
-        <p class="muted">Ingresa el codigo que muestra el juego para vincularlo a tu cuenta.</p>
+        <p class="muted"><?= e(t('oauth.enter_code')) ?></p>
         <form class="form" method="post">
             <input type="hidden" name="action" value="lookup">
             <div class="field">
-                <label for="user_code">Codigo</label>
+                <label for="user_code"><?= e(t('oauth.code')) ?></label>
                 <input id="user_code" name="user_code" placeholder="ABCD-1234" required>
             </div>
             <div class="actions">
-                <button type="submit">Continuar</button>
+                <button type="submit"><?= e(t('oauth.continue')) ?></button>
             </div>
         </form>
     <?php elseif (!$device): ?>
-        <div class="alert alert--error">No existe una solicitud activa con ese codigo.</div>
+        <div class="alert alert--error"><?= e(t('oauth.no_request')) ?></div>
         <form class="form" method="post">
             <input type="hidden" name="action" value="lookup">
             <div class="field">
-                <label for="user_code_retry">Codigo</label>
+                <label for="user_code_retry"><?= e(t('oauth.code')) ?></label>
                 <input id="user_code_retry" name="user_code" value="<?= e($userCode) ?>" required>
             </div>
             <div class="actions">
-                <button type="submit">Buscar otra vez</button>
+                <button type="submit"><?= e(t('oauth.try_again')) ?></button>
             </div>
         </form>
     <?php else: ?>
         <dl class="meta">
-            <div><dt>Juego</dt><dd><?= e($device['game_name']) ?></dd></div>
-            <div><dt>Codigo</dt><dd><code><?= e($device['user_code_preview']) ?></code></dd></div>
-            <div><dt>Estado</dt><dd><?= e($device['status']) ?></dd></div>
-            <div><dt>Expira</dt><dd><?= e($device['expires_at']) ?></dd></div>
+            <div><dt><?= e(t('oauth.game')) ?></dt><dd><?= e($device['game_name']) ?></dd></div>
+            <div><dt><?= e(t('oauth.code')) ?></dt><dd><code><?= e($device['user_code_preview']) ?></code></dd></div>
+            <div><dt><?= e(t('oauth.status')) ?></dt><dd><?= e($device['status']) ?></dd></div>
+            <div><dt><?= e(t('oauth.expires')) ?></dt><dd><?= e($device['expires_at']) ?></dd></div>
         </dl>
 
         <?php if ($device['status'] === 'pending'): ?>
-            <p class="muted">Este juego requiere acceso a tu cuenta para continuar.</p>
+            <p class="muted"><?= e(t('oauth.requires_access')) ?></p>
             <div class="actions">
                 <form method="post">
                     <?= Csrf::field() ?>
                     <input type="hidden" name="action" value="approve">
                     <input type="hidden" name="user_code" value="<?= e($userCode) ?>">
-                    <button type="submit">Aprobar vinculo</button>
+                    <button type="submit"><?= e(t('oauth.approve')) ?></button>
                 </form>
                 <form method="post">
                     <?= Csrf::field() ?>
                     <input type="hidden" name="action" value="deny">
                     <input type="hidden" name="user_code" value="<?= e($userCode) ?>">
-                    <button type="submit" class="button button--secondary">Rechazar</button>
+                    <button type="submit" class="button button--secondary"><?= e(t('oauth.deny')) ?></button>
                 </form>
             </div>
         <?php elseif ($device['status'] === 'authorized'): ?>
-            <div class="alert alert--success">Solicitud aprobada. Vuelve al juego para continuar.</div>
+            <div class="alert alert--success"><?= e(t('oauth.approved')) ?></div>
         <?php elseif ($device['status'] === 'denied'): ?>
-            <div class="alert alert--error">Solicitud rechazada.</div>
+            <div class="alert alert--error"><?= e(t('oauth.denied')) ?></div>
         <?php else: ?>
-            <div class="alert alert--error">Solicitud expirada. Inicia el vinculo otra vez desde la app compatible.</div>
+            <div class="alert alert--error"><?= e(t('oauth.expired')) ?></div>
         <?php endif; ?>
     <?php endif; ?>
 </section>

@@ -54,7 +54,7 @@ Page::header('EULA');
     <div class="section-heading">
         <div>
             <h1><?= e($settings['title']) ?></h1>
-            <p class="muted">Version <?= e($settings['version']) ?></p>
+            <p class="muted">Version <?= e($settings['version']) ?> &middot; <?= e(strtoupper((string) $settings['locale'])) ?></p>
         </div>
         <span class="status-pill <?= $settings['enabled'] ? 'status-pill--published' : 'status-pill--archived' ?>">
             <?= $settings['enabled'] ? 'Activo' : 'Deshabilitado' ?>
@@ -75,7 +75,7 @@ Page::header('EULA');
                     <?= Csrf::field() ?>
                     <label class="checkbox-field">
                         <input type="checkbox" name="accept_eula" value="1" required>
-                        Acepto esta version del EULA
+                        Acepto esta version del EULA (<?= e(strtoupper((string) $settings['locale'])) ?>)
                     </label>
                     <div class="actions">
                         <button type="submit">Aceptar y continuar</button>

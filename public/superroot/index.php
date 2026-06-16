@@ -123,9 +123,17 @@ $logLines = Superroot::recentLogLines(30);
 $config = app_config();
 $platformSettings = PlatformSettings::values();
 $contentSettings = PlatformSettings::contentSettings();
+$contentTranslations = PlatformSettings::contentTranslations();
+$languageSettings = PlatformSettings::languageSettings();
+$supportedLocalesText = implode(PHP_EOL, array_map(
+    static fn (string $locale, string $label): string => $locale . '=' . $label,
+    array_keys($languageSettings['supported_locales']),
+    array_values($languageSettings['supported_locales'])
+));
 $maintenanceSettings = PlatformSettings::maintenanceSettings();
 $emailSettings = PlatformSettings::emailVerificationSettings();
 $eulaSettings = PlatformSettings::eulaSettings();
+$eulaTranslations = PlatformSettings::eulaTranslations();
 $editIntegrationId = (int) ($_GET['edit_integration'] ?? 0);
 $editingIntegration = null;
 foreach ($integrations as $integration) {
@@ -333,34 +341,67 @@ Page::header('Superroot');
 <?php if ($section === 'content'): ?>
     <section class="panel">
         <h2>Contenido editable</h2>
-        <p class="muted">Textos principales que Superroot puede cambiar sin editar archivos.</p>
+        <p class="muted">Textos principales e idiomas que Superroot puede cambiar sin editar archivos.</p>
         <form class="form" method="post">
             <?= Csrf::field() ?>
             <input type="hidden" name="action" value="save_content">
-            <div class="form-grid">
-                <div class="field">
-                    <label for="home_title">Titulo de inicio</label>
-                    <input id="home_title" name="home_title" value="<?= e($contentSettings['home_title']) ?>" maxlength="160">
-                </div>
-                <div class="field">
-                    <label for="footer_text">Footer</label>
-                    <input id="footer_text" name="footer_text" value="<?= e($contentSettings['footer_text']) ?>" maxlength="240">
-                </div>
-            </div>
             <div class="field">
-                <label for="home_intro">Texto de inicio</label>
-                <textarea id="home_intro" name="home_intro" rows="4" maxlength="1000"><?= e($contentSettings['home_intro']) ?></textarea>
+                <label for="supported_locales_text">Idiomas disponibles</label>
+                <textarea id="supported_locales_text" name="supported_locales_text" rows="4" placeholder="en=English&#10;es=Español"><?= e($supportedLocalesText) ?></textarea>
+                <p class="muted">Formato por linea: <code>codigo=Nombre</code>. Despues de guardar aparecen campos para cada idioma.</p>
             </div>
             <div class="form-grid">
                 <div class="field">
-                    <label for="games_intro">Texto del catalogo</label>
-                    <textarea id="games_intro" name="games_intro" rows="4" maxlength="500"><?= e($contentSettings['games_intro']) ?></textarea>
+                    <label for="default_locale">Idioma por defecto</label>
+                    <select id="default_locale" name="default_locale">
+                        <?php foreach ($languageSettings['supported_locales'] as $locale => $label): ?>
+                            <option value="<?= e($locale) ?>" <?= $languageSettings['default_locale'] === $locale ? 'selected' : '' ?>>
+                                <?= e($label) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-                <div class="field">
-                    <label for="library_intro">Texto de biblioteca</label>
-                    <textarea id="library_intro" name="library_intro" rows="4" maxlength="500"><?= e($contentSettings['library_intro']) ?></textarea>
+                <div>
+                    <label>Idiomas activos</label>
+                    <div class="role-checks">
+                        <?php foreach ($languageSettings['supported_locales'] as $locale => $label): ?>
+                            <label class="checkbox-field checkbox-field--compact">
+                                <input type="checkbox" name="enabled_locales[]" value="<?= e($locale) ?>" <?= in_array($locale, $languageSettings['enabled_locales'], true) ? 'checked' : '' ?>>
+                                <?= e($label) ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
+
+            <?php foreach ($languageSettings['supported_locales'] as $locale => $label): ?>
+                <?php $translation = $contentTranslations[$locale] ?? $contentSettings; ?>
+                <h3><?= e($label) ?> <span class="muted">(<?= e($locale) ?>)</span></h3>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="content_<?= e($locale) ?>_home_title">Titulo de inicio</label>
+                        <input id="content_<?= e($locale) ?>_home_title" name="content[<?= e($locale) ?>][home_title]" value="<?= e($translation['home_title'] ?? '') ?>" maxlength="160">
+                    </div>
+                    <div class="field">
+                        <label for="content_<?= e($locale) ?>_footer_text">Footer</label>
+                        <input id="content_<?= e($locale) ?>_footer_text" name="content[<?= e($locale) ?>][footer_text]" value="<?= e($translation['footer_text'] ?? '') ?>" maxlength="240">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="content_<?= e($locale) ?>_home_intro">Texto de inicio</label>
+                    <textarea id="content_<?= e($locale) ?>_home_intro" name="content[<?= e($locale) ?>][home_intro]" rows="4" maxlength="1000"><?= e($translation['home_intro'] ?? '') ?></textarea>
+                </div>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="content_<?= e($locale) ?>_games_intro">Texto del catalogo</label>
+                        <textarea id="content_<?= e($locale) ?>_games_intro" name="content[<?= e($locale) ?>][games_intro]" rows="4" maxlength="500"><?= e($translation['games_intro'] ?? '') ?></textarea>
+                    </div>
+                    <div class="field">
+                        <label for="content_<?= e($locale) ?>_library_intro">Texto de biblioteca</label>
+                        <textarea id="content_<?= e($locale) ?>_library_intro" name="content[<?= e($locale) ?>][library_intro]" rows="4" maxlength="500"><?= e($translation['library_intro'] ?? '') ?></textarea>
+                    </div>
+                </div>
+            <?php endforeach; ?>
             <div class="actions">
                 <button type="submit">Guardar contenido</button>
                 <a class="button button--secondary" href="<?= e(url('/')) ?>">Ver inicio</a>
@@ -462,20 +503,26 @@ Page::header('Superroot');
                     <input type="checkbox" name="eula_required" value="1" <?= $eulaSettings['required'] ? 'checked' : '' ?>>
                     Requerir aceptar EULA vigente
                 </label>
-                <div class="field">
-                    <label for="eula_version">Version</label>
-                    <input id="eula_version" name="eula_version" value="<?= e($eulaSettings['version']) ?>" maxlength="40">
-                </div>
-                <div class="field">
-                    <label for="eula_title">Titulo</label>
-                    <input id="eula_title" name="eula_title" value="<?= e($eulaSettings['title']) ?>" maxlength="180">
-                </div>
             </div>
 
-            <div class="field">
-                <label for="eula_body">Texto del EULA</label>
-                <textarea id="eula_body" name="eula_body" rows="14"><?= e($eulaSettings['body']) ?></textarea>
-            </div>
+            <?php foreach ($languageSettings['supported_locales'] as $locale => $label): ?>
+                <?php $eulaTranslation = $eulaTranslations[$locale] ?? $eulaSettings; ?>
+                <h4><?= e($label) ?> <span class="muted">(<?= e($locale) ?>)</span></h4>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="eula_<?= e($locale) ?>_version">Version</label>
+                        <input id="eula_<?= e($locale) ?>_version" name="eula[<?= e($locale) ?>][version]" value="<?= e($eulaTranslation['version'] ?? '1.0') ?>" maxlength="40">
+                    </div>
+                    <div class="field">
+                        <label for="eula_<?= e($locale) ?>_title">Titulo</label>
+                        <input id="eula_<?= e($locale) ?>_title" name="eula[<?= e($locale) ?>][title]" value="<?= e($eulaTranslation['title'] ?? '') ?>" maxlength="180">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="eula_<?= e($locale) ?>_body">Texto del EULA</label>
+                    <textarea id="eula_<?= e($locale) ?>_body" name="eula[<?= e($locale) ?>][body]" rows="10"><?= e($eulaTranslation['body'] ?? '') ?></textarea>
+                </div>
+            <?php endforeach; ?>
 
             <div class="actions">
                 <button type="submit">Guardar acceso legal</button>

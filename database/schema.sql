@@ -91,11 +91,12 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 CREATE TABLE IF NOT EXISTS user_eula_acceptances (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
+    locale VARCHAR(12) NOT NULL DEFAULT 'es',
     version VARCHAR(40) NOT NULL,
     accepted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ip_address VARCHAR(45) NULL,
     user_agent VARCHAR(255) NULL,
-    UNIQUE KEY uq_user_eula_acceptances_user_version (user_id, version),
+    UNIQUE KEY uq_user_eula_acceptances_user_locale_version (user_id, locale, version),
     INDEX idx_user_eula_acceptances_user (user_id),
     CONSTRAINT fk_user_eula_acceptances_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -131,6 +132,22 @@ CREATE TABLE IF NOT EXISTS user_games (
     INDEX idx_user_games_game (game_id),
     CONSTRAINT fk_user_games_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_user_games_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_presence (
+    user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+    status ENUM('online', 'in_game', 'offline') NOT NULL DEFAULT 'online',
+    game_id INT UNSIGNED NULL,
+    game_name VARCHAR(140) NULL,
+    game_slug VARCHAR(160) NULL,
+    source VARCHAR(80) NULL,
+    last_seen_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_presence_status (status),
+    INDEX idx_user_presence_last_seen (last_seen_at),
+    INDEX idx_user_presence_game (game_id),
+    CONSTRAINT fk_user_presence_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_presence_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS user_game_licenses (
@@ -259,7 +276,7 @@ CREATE TABLE IF NOT EXISTS game_oauth_tokens (
     device_code_id BIGINT UNSIGNED NULL,
     access_token_hash VARCHAR(128) NOT NULL UNIQUE,
     status ENUM('active', 'revoked') NOT NULL DEFAULT 'active',
-    expires_at DATETIME NOT NULL,
+    expires_at DATETIME NULL,
     last_used_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     revoked_at DATETIME NULL,
@@ -277,6 +294,7 @@ CREATE TABLE IF NOT EXISTS game_achievements (
     code VARCHAR(100) NOT NULL,
     title VARCHAR(160) NOT NULL,
     description TEXT NULL,
+    translations_json LONGTEXT NULL,
     image_path VARCHAR(255) NULL,
     locked_image_path VARCHAR(255) NULL,
     points INT UNSIGNED NOT NULL DEFAULT 0,

@@ -11,7 +11,7 @@ La primera fase deja una base funcional y simple:
 - Registro, login, logout y perfil basico.
 - Mantener sesion iniciada con token persistente hasheado.
 - Verificacion por correo configurable con modo local por log o SMTP con PHPMailer.
-- EULA configurable y versionado desde Superroot.
+- Sistema de idiomas `en`/`es`, con `en` por defecto, textos publicos y EULA versionado por idioma desde Superroot.
 - Modo oscuro local por navegador.
 - Roles base: `user`, `developer`, `admin`, `supporter`, `superroot`.
 - Soporte basico con tickets, chat por polling, extension de tiempo y cierre.
@@ -23,9 +23,9 @@ La primera fase deja una base funcional y simple:
 - API JSON inicial en `/api/status/`.
 - OAuth device-code para vincular un juego o app compatible a la cuenta principal sin pedir contrasena dentro del juego.
 - APIs de runtime para perfil, BD dedicada, datos persistentes de jugador y logros configurables.
-- Logros con imagen desbloqueada/bloqueada.
+- Logros con imagen desbloqueada/bloqueada y textos por idioma.
 - Inventario con imagenes, codigos canjeables reales, licencias de juegos y pagina `/redeem/`.
-- Comunidad, mensajes, notificaciones por sesion y perfiles publicos.
+- Comunidad, mensajes estilo chat, notificaciones por sesion y perfiles publicos con presencia online/jugando.
 - Publish on Games, Workshop y cliente tipo Steam configurables desde Superroot.
 - Esquema SQL preparado para usuarios, juegos, roles, codigos, soporte, integraciones y API keys.
 
@@ -254,7 +254,7 @@ Los juegos consumen APIs HTTP/JSON con API keys por juego. El flujo recomendado 
 6. La app hace polling a `POST /api/oauth/token/` y guarda el token Bearer.
 7. Las llamadas autenticadas usan `Authorization: Bearer <token>`.
 
-Al aprobarse el OAuth, el backend crea el vinculo y una licencia activa para el juego.
+Al aprobarse el OAuth, el backend crea el vinculo y una licencia activa para el juego. El token Bearer no caduca por tiempo: queda activo hasta que el usuario desvincule el juego o se revoque. Cada llamada autenticada actualiza la presencia publica como `Jugando <juego>`.
 
 ## Runtime de juego
 
@@ -334,7 +334,7 @@ Funciones actuales:
 - Activar o desactivar Publish on Games, Workshop y cliente tipo Steam.
 - Editar textos publicos principales desde `Contenido`.
 - Configurar verificacion por correo en modo `log` o `mail`.
-- Configurar EULA publico, version vigente y obligatoriedad de aceptacion.
+- Configurar idiomas, textos publicos y EULA publico por idioma, version vigente y obligatoriedad de aceptacion.
 - Gestion simple de roles `user`, `developer`, `admin`, `supporter`.
 - Bloqueo, desbloqueo y estado de recuperacion de usuarios.
 - Modo mantenimiento global para dejar entrar solo a `admin`, `superroot` y `developer`.
@@ -364,7 +364,7 @@ Rutas publicas:
 /eula/
 ```
 
-Si el EULA esta marcado como requerido, el registro pide aceptarlo. Si cambias la version, los usuarios deberan aceptar la version vigente en `/eula/`.
+Si el EULA esta marcado como requerido, el registro pide aceptarlo. Cada idioma tiene su propia version; si cambias la version `en` o `es`, los usuarios deberan aceptar la version vigente de ese idioma en `/eula/`.
 
 ## Inventario y canjes
 
@@ -450,7 +450,9 @@ Flujo minimo para montar un launcher:
    - `POST /api/client/obtain-game/`
    - `POST /api/client/inventory/`
    - `POST /api/client/redeem/`
-6. Usa `POST /api/client/logout/` para revocar el token.
+   - `POST /api/client/presence/`
+6. Usa `POST /api/client/presence/` para marcar `online` o `in_game` con `game_slug`.
+7. Usa `POST /api/client/logout/` para revocar el token.
 
 Si una cuenta esta suspendida, el login web muestra un popup y el cliente recibe error `403`.
 
@@ -479,6 +481,7 @@ Para que un juego se instale tipo Steam:
 6. Si el juego esta en catalogo y tiene build, el cliente llama `/api/client/obtain-game/` para crear licencia y agregarlo a biblioteca.
 7. El cliente compara la version instalada local con la ultima build y muestra Instalar, Reinstalar o Actualizar.
 8. El cliente descarga, verifica checksum, extrae en `%AppData%\JevzGamesClient\games\<slug>` y ejecuta el `.exe`.
+9. Al ejecutar un juego, el cliente puede enviar `POST /api/client/presence/` con `{"status":"in_game","game_slug":"slug"}` y volver a `online` al cerrar.
 
 La primera compilacion del cliente descarga CefSharp/CEF desde NuGet y puede tardar bastante porque CEF es pesado.
 

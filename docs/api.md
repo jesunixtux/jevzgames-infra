@@ -122,11 +122,13 @@ Request:
 }
 ```
 
-Mientras espera, responde `success: false` con `message: authorization_pending`. Al aprobar, responde `success: true` con `access_token` y la licencia activa del juego.
+Mientras espera, responde `success: false` con `message: authorization_pending`. Al aprobar, responde `success: true` con `access_token` y la licencia activa del juego. El `access_token` queda persistente hasta que el usuario desvincule el juego o el token sea revocado.
 
 ### POST `/api/user-profile/`
 
 Endpoint autenticado para validar el token y obtener el usuario vinculado al juego.
+
+Cada llamada autenticada con token de juego refresca la presencia del usuario como `in_game` para ese juego.
 
 Header:
 
@@ -393,6 +395,35 @@ Lista inventario completo del usuario autenticado por `client_token`.
 ### POST `/api/client/redeem/`
 
 Canjea codigos desde el cliente.
+
+### POST `/api/client/presence/`
+
+Actualiza la presencia del usuario autenticado por `client_token`. No guarda historial, solo la fila actual de `user_presence`.
+
+Header:
+
+```text
+Authorization: Bearer jvg_ct_...
+```
+
+Request para conectado:
+
+```json
+{
+  "status": "online"
+}
+```
+
+Request para mostrar juego activo:
+
+```json
+{
+  "status": "in_game",
+  "game_slug": "jumpfall"
+}
+```
+
+Tambien acepta `game_id`. Para limpiar juego activo envia `{"status":"online"}` o revoca el token con logout.
 
 ### POST `/api/client/logout/`
 

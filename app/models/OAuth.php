@@ -10,7 +10,6 @@ use RuntimeException;
 final class OAuth
 {
     private const DEVICE_EXPIRES_MINUTES = 10;
-    private const ACCESS_TOKEN_EXPIRES_DAYS = 30;
     private const POLL_INTERVAL_SECONDS = 3;
 
     public static function ensureTables(): void
@@ -47,7 +46,7 @@ final class OAuth
                 device_code_id BIGINT UNSIGNED NULL,
                 access_token_hash VARCHAR(128) NOT NULL UNIQUE,
                 status ENUM("active", "revoked") NOT NULL DEFAULT "active",
-                expires_at DATETIME NOT NULL,
+                expires_at DATETIME NULL,
                 last_used_at DATETIME NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 revoked_at DATETIME NULL,
@@ -59,6 +58,11 @@ final class OAuth
                 CONSTRAINT fk_game_oauth_tokens_device FOREIGN KEY (device_code_id) REFERENCES game_oauth_device_codes(id) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
+
+        try {
+            $pdo->exec('ALTER TABLE game_oauth_tokens MODIFY expires_at DATETIME NULL');
+        } catch (\Throwable) {
+        }
     }
 
     public static function createDeviceCode(string $publicKey): array
@@ -234,7 +238,7 @@ final class OAuth
                 'INSERT INTO game_oauth_tokens
                     (game_id, user_id, device_code_id, access_token_hash, status, expires_at, created_at)
                  VALUES
-                    (:game_id, :user_id, :device_code_id, :access_token_hash, "active", DATE_ADD(NOW(), INTERVAL ' . self::ACCESS_TOKEN_EXPIRES_DAYS . ' DAY), NOW())'
+                    (:game_id, :user_id, :device_code_id, :access_token_hash, "active", NULL, NOW())'
             );
             $stmt->execute([
                 'game_id' => (int) $device['game_id'],
@@ -257,7 +261,8 @@ final class OAuth
             'status' => 'authorized',
             'access_token' => $accessToken,
             'token_type' => 'Bearer',
-            'expires_in' => self::ACCESS_TOKEN_EXPIRES_DAYS * 86400,
+            'expires_in' => null,
+            'persistent' => true,
             'user' => [
                 'id' => (int) ($freshDevice['approved_user_id'] ?? 0),
                 'username' => (string) ($freshDevice['username'] ?? ''),
@@ -284,7 +289,7 @@ final class OAuth
              INNER JOIN games g ON g.id = t.game_id
              WHERE t.access_token_hash = :hash
                AND t.status = "active"
-               AND t.expires_at >= NOW()
+               AND (t.expires_at IS NULL OR t.expires_at >= NOW())
                AND g.status IN ("development", "playtest", "beta", "published")
              LIMIT 1'
         );
@@ -297,6 +302,10 @@ final class OAuth
 
         $stmt = Database::pdo()->prepare('UPDATE game_oauth_tokens SET last_used_at = NOW() WHERE id = :id');
         $stmt->execute(['id' => (int) $token['id']]);
+        try {
+            Presence::set((int) $token['user_id'], 'in_game', (int) $token['game_id'], 'game');
+        } catch (\Throwable) {
+        }
 
         return $token;
     }

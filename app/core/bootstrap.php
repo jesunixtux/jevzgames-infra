@@ -40,6 +40,7 @@ spl_autoload_register(static function (string $class): void {
 require APP_PATH . DIRECTORY_SEPARATOR . 'helpers' . DIRECTORY_SEPARATOR . 'config.php';
 require APP_PATH . DIRECTORY_SEPARATOR . 'helpers' . DIRECTORY_SEPARATOR . 'escape.php';
 require APP_PATH . DIRECTORY_SEPARATOR . 'helpers' . DIRECTORY_SEPARATOR . 'route.php';
+require APP_PATH . DIRECTORY_SEPARATOR . 'helpers' . DIRECTORY_SEPARATOR . 'i18n.php';
 require APP_PATH . DIRECTORY_SEPARATOR . 'helpers' . DIRECTORY_SEPARATOR . 'asset.php';
 require APP_PATH . DIRECTORY_SEPARATOR . 'helpers' . DIRECTORY_SEPARATOR . 'response.php';
 require APP_PATH . DIRECTORY_SEPARATOR . 'helpers' . DIRECTORY_SEPARATOR . 'request.php';
@@ -77,6 +78,10 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+if (isset($_GET['lang'])) {
+    current_locale();
+}
+
 if (PHP_SAPI !== 'cli' && is_installed()) {
     try {
         $maintenance = \App\Models\PlatformSettings::maintenanceSettings();
@@ -104,10 +109,10 @@ if (PHP_SAPI !== 'cli' && is_installed()) {
                 http_response_code(503);
                 $message = e((string) $maintenance['message']);
                 $loginUrl = e(url('/login/'));
-                echo '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">';
-                echo '<title>Mantenimiento</title><link rel="stylesheet" href="' . e(asset_url('css/main.css')) . '"></head><body>';
-                echo '<main class="main"><section class="panel panel--narrow"><h1>Mantenimiento</h1><p class="muted">' . $message . '</p>';
-                echo '<div class="actions"><a class="button" href="' . $loginUrl . '">Login interno</a></div></section></main></body></html>';
+                echo '<!doctype html><html lang="' . e(current_locale()) . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">';
+                echo '<title>' . e(i18n_text('Mantenimiento', 'Maintenance')) . '</title><link rel="stylesheet" href="' . e(asset_url('css/main.css')) . '"></head><body>';
+                echo '<main class="main"><section class="panel panel--narrow"><h1>' . e(i18n_text('Mantenimiento', 'Maintenance')) . '</h1><p class="muted">' . $message . '</p>';
+                echo '<div class="actions"><a class="button" href="' . $loginUrl . '">' . e(i18n_text('Login interno', 'Internal login')) . '</a></div></section></main></body></html>';
                 exit;
             }
         }

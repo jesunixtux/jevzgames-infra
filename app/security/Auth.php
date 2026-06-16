@@ -6,6 +6,7 @@ namespace App\Security;
 use App\Core\Database;
 use App\Core\Page;
 use App\Models\PlatformSettings;
+use App\Models\Presence;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use RuntimeException;
@@ -97,6 +98,10 @@ final class Auth
         $_SESSION['user_id'] = (int) $user['id'];
         self::$cachedUser = User::findByIdWithRoles((int) $user['id']);
         User::touchLastLogin((int) $user['id']);
+        try {
+            Presence::set((int) $user['id'], 'online', null, 'web');
+        } catch (\Throwable) {
+        }
         if ($remember) {
             self::rememberUser((int) $user['id']);
         } else {
@@ -130,12 +135,20 @@ final class Auth
             self::rememberUser($userId);
         }
         User::touchLastLogin($userId);
+        try {
+            Presence::set($userId, 'online', null, 'oauth');
+        } catch (\Throwable) {
+        }
         ActivityLogger::info('login_success', ['user_id' => $userId, 'provider' => 'external_oauth']);
     }
 
     public static function logout(): void
     {
         if (self::check()) {
+            try {
+                Presence::offline((int) $_SESSION['user_id']);
+            } catch (\Throwable) {
+            }
             ActivityLogger::info('logout', ['user_id' => (int) $_SESSION['user_id']]);
         }
 
@@ -154,6 +167,7 @@ final class Auth
     public static function requireLogin(): void
     {
         if (!self::check()) {
+            self::rememberRequestedRoute();
             \flash('error', 'Debes iniciar sesion para continuar.');
             \redirect_to('/login/');
         }
@@ -169,6 +183,34 @@ final class Auth
             echo '<section class="panel"><h1>Acceso restringido</h1><p>No tienes permisos para entrar a esta seccion.</p></section>';
             Page::footer();
             exit;
+        }
+    }
+
+    private static function rememberRequestedRoute(): void
+    {
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+        if ($uri === '') {
+            return;
+        }
+
+        $path = parse_url($uri, PHP_URL_PATH);
+        if (!is_string($path) || $path === '') {
+            return;
+        }
+
+        $base = \public_base_path();
+        if ($base !== '' && str_starts_with($path, $base)) {
+            $path = substr($path, strlen($base));
+        }
+
+        $target = '/' . ltrim($path, '/');
+        $query = parse_url($uri, PHP_URL_QUERY);
+        if (is_string($query) && $query !== '') {
+            $target .= '?' . $query;
+        }
+
+        if ($target !== '/login/' && $target !== '/login' && !str_starts_with($target, '//')) {
+            $_SESSION['after_login_redirect'] = $target;
         }
     }
 

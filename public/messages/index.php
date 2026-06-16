@@ -5,6 +5,7 @@ require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR 
 
 use App\Core\Page;
 use App\Models\DirectMessage;
+use App\Models\Presence;
 use App\Security\Auth;
 use App\Security\Csrf;
 
@@ -50,6 +51,7 @@ $activeThreadId = (int) ($_GET['thread'] ?? 0);
 $composeTo = ltrim(trim((string) ($_GET['to'] ?? '')), '@');
 $composeUser = $composeTo !== '' ? DirectMessage::userByUsername($composeTo) : null;
 $activeThread = $activeThreadId > 0 ? DirectMessage::findThreadForUser($activeThreadId, $userId) : null;
+$activePresence = $activeThread ? Presence::forUser((int) $activeThread['other_user_id']) : null;
 $messages = $activeThread ? DirectMessage::messages((int) $activeThread['id'], $userId) : [];
 $lastMessage = $messages !== [] ? $messages[array_key_last($messages)] : null;
 $lastMessageId = is_array($lastMessage) ? (int) $lastMessage['id'] : 0;
@@ -100,6 +102,9 @@ Page::header('Mensajes');
                 <div>
                     <h2>@<?= e($activeThread['other_username']) ?></h2>
                     <p class="muted"><?= e($activeThread['other_display_name']) ?></p>
+                    <?php if ($activePresence): ?>
+                        <p><span class="presence-pill presence-pill--<?= e((string) $activePresence['status']) ?>" data-presence-user-id="<?= e($activeThread['other_user_id']) ?>" data-presence-poll-url="<?= e(url('/api/presence/user/')) ?>"><?= e(Presence::label($activePresence)) ?></span></p>
+                    <?php endif; ?>
                 </div>
                 <a class="button button--secondary" href="<?= e(url('/user/@' . rawurlencode((string) $activeThread['other_username']))) ?>">Ver perfil</a>
             </div>

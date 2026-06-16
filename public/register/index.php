@@ -108,7 +108,7 @@ Page::header('Registro');
         <?php if ($eulaSettings['enabled']): ?>
             <label class="checkbox-field">
                 <input type="checkbox" name="accept_eula" value="1" <?= !empty($_POST['accept_eula']) ? 'checked' : '' ?> <?= $eulaSettings['required'] ? 'required' : '' ?>>
-                Acepto el <a href="<?= e(url('/eula/')) ?>" target="_blank" rel="noopener">EULA version <?= e($eulaSettings['version']) ?></a>
+                Acepto el <a href="<?= e(url('/eula/')) ?>" target="_blank" rel="noopener">EULA version <?= e($eulaSettings['version']) ?> (<?= e(strtoupper((string) $eulaSettings['locale'])) ?>)</a>
             </label>
         <?php endif; ?>
         <div class="actions">
