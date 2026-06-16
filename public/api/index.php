@@ -33,5 +33,10 @@ api_response(true, 'API JevzGames Infra', [
         url('/api/client/redeem/'),
         url('/api/client/presence/'),
         url('/api/client/logout/'),
+        url('/api/developer/games/list/'),
+        url('/api/developer/games/detail/'),
+        url('/api/developer/api-keys/create/'),
+        url('/api/developer/api-keys/revoke/'),
+        url('/api/developer/games/test/'),
     ],
 ]);

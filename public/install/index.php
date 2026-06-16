@@ -31,7 +31,7 @@ if (installer_is_locked()) {
 
 if (request_is_post()) {
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
-        $error = 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.';
+        Csrf::failRedirect('/install/');
     } else {
         try {
             Installer::install($_POST);

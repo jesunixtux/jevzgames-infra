@@ -24,7 +24,7 @@ $eulaSettings = PlatformSettings::eulaSettings();
 
 if (request_is_post()) {
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
-        $errors[] = 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.';
+        Csrf::failRedirect('/register/');
     } else {
         $username = trim((string) ($_POST['username'] ?? ''));
         $email = trim((string) ($_POST['email'] ?? ''));

@@ -25,8 +25,7 @@ if (request_is_post()) {
     $ticketId = (int) ($_POST['ticket_id'] ?? 0);
 
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
-        flash('error', 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.');
-        redirect_to('/supporter/');
+        Csrf::failRedirect('/supporter/');
     }
 
     try {

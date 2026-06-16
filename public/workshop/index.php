@@ -23,8 +23,7 @@ if (request_is_post()) {
         redirect_to('/workshop/');
     }
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
-        flash('error', 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.');
-        redirect_to('/workshop/');
+        Csrf::failRedirect('/workshop/');
     }
 
     try {

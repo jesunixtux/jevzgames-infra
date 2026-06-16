@@ -36,7 +36,7 @@ $externalProviders = is_installed() ? ExternalAuth::loginProviders() : [];
 
 if (request_is_post()) {
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
-        $error = 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.';
+        Csrf::failRedirect('/login/');
     } else {
         $identity = trim((string) ($_POST['identity'] ?? ''));
         $password = (string) ($_POST['password'] ?? '');

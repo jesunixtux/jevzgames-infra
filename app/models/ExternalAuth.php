@@ -19,6 +19,10 @@ final class ExternalAuth
 
         $providers = [];
         foreach ($stmt->fetchAll() as $row) {
+            if ((string) $row['provider'] === 'steam') {
+                continue;
+            }
+
             $config = Game::decodeJson($row['config_json'] ?? null);
             if (empty($config['login_enabled'])) {
                 continue;
@@ -37,6 +41,10 @@ final class ExternalAuth
 
     public static function provider(string $provider): ?array
     {
+        if (strtolower(trim($provider)) === 'steam') {
+            return null;
+        }
+
         $stmt = Database::pdo()->prepare(
             'SELECT id, name, provider, client_id, config_json
              FROM external_integrations

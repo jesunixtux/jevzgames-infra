@@ -26,8 +26,7 @@ if ($token !== '') {
 
 if (request_is_post()) {
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
-        flash('error', 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.');
-        redirect_to('/verify-email/');
+        Csrf::failRedirect('/verify-email/');
     }
 
     $email = trim((string) ($_POST['email'] ?? ''));

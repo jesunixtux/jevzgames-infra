@@ -19,8 +19,7 @@ $userId = (int) ($user['id'] ?? 0);
 
 if (request_is_post()) {
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
-        flash('error', 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.');
-        redirect_to('/friends/');
+        Csrf::failRedirect('/friends/');
     }
 
     $action = (string) ($_POST['action'] ?? '');

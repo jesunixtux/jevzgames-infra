@@ -20,8 +20,7 @@ if (request_is_post()) {
     }
 
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
-        flash('error', 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.');
-        redirect_to('/community/');
+        Csrf::failRedirect('/community/');
     }
 
     $action = (string) ($_POST['action'] ?? '');

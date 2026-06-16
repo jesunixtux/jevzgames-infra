@@ -429,6 +429,98 @@ Tambien acepta `game_id`. Para limpiar juego activo envia `{"status":"online"}` 
 
 Revoca el token del cliente actual.
 
+## Developer APIs
+
+Estas APIs usan `client_token` del cliente local:
+
+```text
+Authorization: Bearer jvg_ct_...
+```
+
+Acceso:
+
+- `developer`: solo juegos donde `owner_user_id` es su usuario.
+- `admin` y `superroot`: todos los juegos.
+- `user` y `supporter`: `403`.
+
+### POST `/api/developer/games/list/`
+
+Lista juegos accesibles, cantidad de builds, ultima build y estado de API keys.
+
+```json
+{}
+```
+
+### POST `/api/developer/games/detail/`
+
+Devuelve detalle, configuracion publica, builds y API keys sin secret.
+
+```json
+{
+  "slug": "jumpfall"
+}
+```
+
+Tambien acepta:
+
+```json
+{
+  "game_id": 1
+}
+```
+
+### POST `/api/developer/api-keys/create/`
+
+Crea una API key para un juego permitido. `secret_key` se devuelve una sola vez.
+
+```json
+{
+  "slug": "jumpfall"
+}
+```
+
+### POST `/api/developer/api-keys/revoke/`
+
+Revoca una API key de un juego permitido.
+
+```json
+{
+  "api_key_id": 10
+}
+```
+
+### POST `/api/developer/games/test/`
+
+Devuelve request/response para pruebas guiadas en `/tutorials/`.
+
+```json
+{
+  "slug": "jumpfall",
+  "test": "game_info"
+}
+```
+
+`test` puede ser `game_info`, `version_check`, `database_status` u `oauth_device_code`.
+
+## Steam Connect
+
+Steam se conecta con OpenID 2.0, no con OAuth2 generico. Superroot debe crear una integracion activa con `provider=steam` y:
+
+```json
+{
+  "login_enabled": false,
+  "connect_enabled": true,
+  "steam_api_key": "optional"
+}
+```
+
+Rutas web:
+
+- `GET /auth/steam/start/?mode=connect`
+- `GET /auth/steam/callback/`
+
+Al completar el flujo, se guarda `provider=steam` en `external_accounts`. Desconectar Steam desde perfil elimina solo esa vinculacion.
+
 ## Autenticacion futura de juegos
 
 La tabla `game_api_keys` guarda:

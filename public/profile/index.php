@@ -13,6 +13,7 @@ use App\Models\PlatformSettings;
 use App\Models\Presence;
 use App\Models\PublicProfile;
 use App\Models\SocialSettings;
+use App\Models\SteamAuth;
 use App\Models\User;
 use App\Models\UserAgreement;
 use App\Security\Auth;
@@ -26,8 +27,7 @@ $userId = (int) ($user['id'] ?? 0);
 
 if (request_is_post()) {
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
-        flash('error', 'Token CSRF invalido. Recarga la pagina e intenta de nuevo.');
-        redirect_to('/profile/');
+        Csrf::failRedirect('/profile/');
     }
 
     $action = (string) ($_POST['action'] ?? '');
@@ -75,6 +75,12 @@ if (request_is_post()) {
             redirect_to('/profile/');
         }
 
+        if ($action === 'disconnect_steam_account') {
+            SteamAuth::disconnect($userId);
+            flash('message', t('connections.steam_disconnected'));
+            redirect_to('/profile/');
+        }
+
         throw new RuntimeException('Accion no valida.');
     } catch (Throwable $exception) {
         flash('error', $exception->getMessage());
@@ -99,6 +105,8 @@ $relationshipControls = SocialSettings::controlsForUser($userId);
 $emailSettings = PlatformSettings::emailVerificationSettings();
 $eulaSettings = PlatformSettings::eulaSettings();
 $latestAgreement = UserAgreement::latestForUser($userId);
+$steamConnectEnabled = SteamAuth::connectEnabled();
+$steamAccount = SteamAuth::steamAccountForUser($userId);
 
 Page::header('Perfil');
 ?>
@@ -242,6 +250,45 @@ Page::header('Perfil');
             </div>
         <?php endif; ?>
     </article>
+</section>
+
+<section class="panel">
+    <div class="section-heading">
+        <div>
+            <h2><?= e(t('connections.title')) ?></h2>
+            <p class="muted"><?= e(t('connections.subtitle')) ?></p>
+        </div>
+    </div>
+
+    <div class="compact-list">
+        <div class="compact-row">
+            <div>
+                <strong><?= e(t('connections.steam')) ?></strong><br>
+                <?php if ($steamAccount): ?>
+                    <span class="muted">
+                        <?= e(t('connections.connected')) ?>:
+                        <?= e((string) ($steamAccount['external_username'] ?: $steamAccount['external_user_id'])) ?>
+                        (<code><?= e((string) $steamAccount['external_user_id']) ?></code>)
+                    </span>
+                <?php elseif ($steamConnectEnabled): ?>
+                    <span class="muted"><?= e(t('connections.not_connected')) ?></span>
+                <?php else: ?>
+                    <span class="muted"><?= e(t('connections.steam_disabled')) ?></span>
+                <?php endif; ?>
+            </div>
+            <div class="table-actions">
+                <?php if ($steamAccount): ?>
+                    <form method="post">
+                        <?= Csrf::field() ?>
+                        <input type="hidden" name="action" value="disconnect_steam_account">
+                        <button type="submit" class="button button--secondary"><?= e(t('connections.disconnect')) ?></button>
+                    </form>
+                <?php elseif ($steamConnectEnabled): ?>
+                    <a class="button" href="<?= e(url('/auth/steam/start/?mode=connect')) ?>"><?= e(t('connections.connect_steam')) ?></a>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
 </section>
 
 <section class="grid">

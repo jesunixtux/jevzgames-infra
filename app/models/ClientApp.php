@@ -75,9 +75,11 @@ final class ClientApp
         ];
     }
 
-    public static function authenticate(string $token): ?array
+    public static function authenticate(string $token, bool $requireEnabled = true): ?array
     {
-        self::ensureEnabled();
+        if ($requireEnabled) {
+            self::ensureEnabled();
+        }
         self::ensureTables();
         $stmt = Database::pdo()->prepare(
             'SELECT cs.*, u.username, u.email, u.display_name, u.status
