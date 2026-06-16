@@ -287,7 +287,6 @@ function i18n_translate_rendered_html(string $html): string
 function i18n_html_dictionary(): array
 {
     return [
-        'JevzGames Infraestructura modular en PHP puro.' => 'JevzGames modular infrastructure in plain PHP.',
         'Configuracion' => 'Configuration',
         'Configuración' => 'Configuration',
         'Configuracion global' => 'Global configuration',
@@ -401,6 +400,8 @@ function i18n_html_dictionary(): array
         'Integraciones' => 'Integrations',
         'Usuarios y roles' => 'Users and roles',
         'Correo y EULA' => 'Email and EULA',
+        'Controla verificacion de correo, recuperacion de contrasena y el EULA vigente sin editar codigo.' => 'Control email verification, password recovery and the active EULA without editing code.',
+        'Esta misma configuracion se usa para restablecer contrasenas.' => 'This same configuration is used to reset passwords.',
         'Verificacion por correo' => 'Email verification',
         'Verificación por correo' => 'Email verification',
         'Correo' => 'Email',

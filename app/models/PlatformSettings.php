@@ -19,12 +19,12 @@ final class PlatformSettings
         'i18n.default_locale' => ['en', 'string'],
         'i18n.supported_locales_json' => ['{"en":"English","es":"Español"}', 'json'],
         'i18n.enabled_locales_json' => ['["en","es"]', 'json'],
-        'content.translations_json' => ['{"en":{"home_title":"JevzGames Infra","home_intro":"Modular monolithic infrastructure for users, games, APIs and internal panels.","games_intro":"Public catalog of games registered in the infrastructure.","library_intro":"Games linked or licensed to your account.","footer_text":"JevzGames modular infrastructure in plain PHP."},"es":{"home_title":"JevzGames Infra","home_intro":"Infraestructura monolitica modular para usuarios, juegos, APIs y paneles internos.","games_intro":"Catalogo publico de juegos registrados en la infraestructura.","library_intro":"Lista de juegos vinculados o licenciados en tu cuenta.","footer_text":"JevzGames Infraestructura modular en PHP puro."}}', 'json'],
-        'content.home_title' => ['JevzGames Infra', 'string'],
-        'content.home_intro' => ['Infraestructura monolitica modular para usuarios, juegos, APIs y paneles internos.', 'string'],
-        'content.games_intro' => ['Catalogo publico de juegos registrados en la infraestructura.', 'string'],
-        'content.library_intro' => ['Lista de juegos vinculados o licenciados en tu cuenta.', 'string'],
-        'content.footer_text' => ['JevzGames Infraestructura modular en PHP puro.', 'string'],
+        'content.translations_json' => ['{"en":{"home_title":"JevzGames","home_intro":"Your library, friends, achievements and inventory in one place.","games_intro":"Discover available games and builds.","library_intro":"Games linked or licensed to your account.","footer_text":"JevzGames, games and community."},"es":{"home_title":"JevzGames","home_intro":"Tu biblioteca, amigos, logros e inventario en un solo lugar.","games_intro":"Descubre juegos y builds disponibles.","library_intro":"Juegos vinculados o con licencia en tu cuenta.","footer_text":"JevzGames, juegos y comunidad."}}', 'json'],
+        'content.home_title' => ['JevzGames', 'string'],
+        'content.home_intro' => ['Tu biblioteca, amigos, logros e inventario en un solo lugar.', 'string'],
+        'content.games_intro' => ['Descubre juegos y builds disponibles.', 'string'],
+        'content.library_intro' => ['Juegos vinculados o con licencia en tu cuenta.', 'string'],
+        'content.footer_text' => ['JevzGames, juegos y comunidad.', 'string'],
         'maintenance.enabled' => ['0', 'boolean'],
         'maintenance.message' => ['La plataforma esta en mantenimiento. Vuelve mas tarde.', 'string'],
         'auth.email_verification_enabled' => ['0', 'boolean'],
@@ -296,7 +296,7 @@ final class PlatformSettings
             'i18n.supported_locales_json' => [json_encode($languageSettings['supported_locales'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'json'],
             'i18n.enabled_locales_json' => [json_encode($languageSettings['enabled_locales'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'json'],
             'content.translations_json' => [json_encode($translations, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'json'],
-            'content.home_title' => [(string) ($defaultContent['home_title'] ?? 'JevzGames Infra'), 'string'],
+            'content.home_title' => [(string) ($defaultContent['home_title'] ?? 'JevzGames'), 'string'],
             'content.home_intro' => [(string) ($defaultContent['home_intro'] ?? ''), 'string'],
             'content.games_intro' => [(string) ($defaultContent['games_intro'] ?? ''), 'string'],
             'content.library_intro' => [(string) ($defaultContent['library_intro'] ?? ''), 'string'],
@@ -572,7 +572,7 @@ final class PlatformSettings
             }
 
             if ($translations[$locale]['home_title'] === '') {
-                $translations[$locale]['home_title'] = 'JevzGames Infra';
+                $translations[$locale]['home_title'] = 'JevzGames';
             }
         }
 
@@ -628,7 +628,7 @@ final class PlatformSettings
         $defaults = json_decode(self::DEFAULTS['content.translations_json'][0], true);
         $defaults = is_array($defaults) ? $defaults : [];
         $defaults['es'] = [
-            'home_title' => (string) ($values['content.home_title'] ?? $defaults['es']['home_title'] ?? 'JevzGames Infra'),
+            'home_title' => (string) ($values['content.home_title'] ?? $defaults['es']['home_title'] ?? 'JevzGames'),
             'home_intro' => (string) ($values['content.home_intro'] ?? $defaults['es']['home_intro'] ?? ''),
             'games_intro' => (string) ($values['content.games_intro'] ?? $defaults['es']['games_intro'] ?? ''),
             'library_intro' => (string) ($values['content.library_intro'] ?? $defaults['es']['library_intro'] ?? ''),

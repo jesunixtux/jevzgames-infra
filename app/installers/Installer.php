@@ -104,7 +104,7 @@ final class Installer
         $dbName = trim((string) ($input['db_name'] ?? ''));
         $dbUser = trim((string) ($input['db_user'] ?? ''));
         $dbPassword = (string) ($input['db_password'] ?? '');
-        $appName = trim((string) ($input['app_name'] ?? 'JevzGames Infra'));
+        $appName = trim((string) ($input['app_name'] ?? 'JevzGames'));
         $baseUrl = rtrim(trim((string) ($input['base_url'] ?? '')), '/');
         $environment = trim((string) ($input['environment'] ?? 'development'));
         $server = trim((string) ($input['server'] ?? 'apache'));

@@ -93,6 +93,7 @@ Page::header('Login');
         <div class="actions">
             <button type="submit">Entrar</button>
             <a class="button button--secondary" href="<?= e(url('/register/')) ?>">Crear cuenta</a>
+            <a class="button button--secondary" href="<?= e(url('/forgot-password/')) ?>"><?= e(i18n_text('Olvide mi contrasena', 'Forgot password')) ?></a>
         </div>
     </form>
 

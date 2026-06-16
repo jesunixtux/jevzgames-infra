@@ -3,8 +3,14 @@ declare(strict_types=1);
 
 require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bootstrap.php';
 
-api_response(true, 'API JevzGames Infra', [
-    'endpoints' => [
+use App\Security\Auth;
+
+$data = [
+    'status' => 'available',
+];
+
+if (Auth::hasRole(['developer', 'admin', 'superroot'])) {
+    $data['endpoints'] = [
         url('/api/status/'),
         url('/api/game-info/'),
         url('/api/version-check/'),
@@ -38,5 +44,7 @@ api_response(true, 'API JevzGames Infra', [
         url('/api/developer/api-keys/create/'),
         url('/api/developer/api-keys/revoke/'),
         url('/api/developer/games/test/'),
-    ],
-]);
+    ];
+}
+
+api_response(true, 'JevzGames API', $data);

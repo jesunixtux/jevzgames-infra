@@ -12,7 +12,10 @@ final class Page
 {
     public static function header(string $title = ''): void
     {
-        $appName = (string) \app_config('app.name', 'JevzGames Infra');
+        $appName = trim((string) \app_config('app.name', 'JevzGames'));
+        if ($appName === '' || stripos($appName, 'infra') !== false) {
+            $appName = 'JevzGames';
+        }
         $fullTitle = $title !== '' ? $title . ' | ' . $appName : $appName;
         $user = Auth::user();
         $locale = \current_locale();
@@ -129,10 +132,17 @@ final class Page
 
     public static function footer(): void
     {
-        $footerText = 'JevzGames modular infrastructure in plain PHP.';
+        $footerText = \i18n_text('JevzGames, juegos y comunidad.', 'JevzGames, games and community.');
         if (\is_installed()) {
             try {
-                $footerText = PlatformSettings::contentSettings()['footer_text'] ?: $footerText;
+                $configuredFooter = trim((string) (PlatformSettings::contentSettings()['footer_text'] ?? ''));
+                if (
+                    $configuredFooter !== ''
+                    && stripos($configuredFooter, 'infraestructura') === false
+                    && stripos($configuredFooter, 'infrastructure') === false
+                ) {
+                    $footerText = $configuredFooter;
+                }
             } catch (\Throwable) {
             }
         }

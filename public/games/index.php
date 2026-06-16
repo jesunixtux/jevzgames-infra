@@ -78,14 +78,24 @@ $links = $userId !== null ? Game::userLinks($userId) : [];
 $builds = GameBuild::latestForGames(array_map(static fn (array $game): int => (int) $game['id'], $games));
 $selectedBuild = $selectedGame ? GameBuild::latestForGame((int) $selectedGame['id']) : null;
 $contentSettings = is_installed() ? PlatformSettings::contentSettings() : [];
+$gamesIntro = trim((string) ($contentSettings['games_intro'] ?? ''));
+if (
+    $gamesIntro === ''
+    || stripos($gamesIntro, 'infraestructura') !== false
+    || stripos($gamesIntro, 'infrastructure') !== false
+    || stripos($gamesIntro, 'API') !== false
+    || stripos($gamesIntro, 'panel') !== false
+) {
+    $gamesIntro = i18n_text('Descubre juegos y builds disponibles.', 'Discover available games and builds.');
+}
 
-Page::header('Juegos');
+Page::header(t('nav.games'));
 ?>
 <section class="panel">
     <div class="section-heading">
         <div>
-            <h1>Juegos</h1>
-            <p class="muted"><?= e($contentSettings['games_intro'] ?? 'Catalogo publico de juegos registrados en la infraestructura.') ?></p>
+            <h1><?= e(t('nav.games')) ?></h1>
+            <p class="muted"><?= e($gamesIntro) ?></p>
         </div>
         <?php if (Auth::hasRole(['admin', 'superroot'])): ?>
             <a class="button button--secondary" href="<?= e(url('/admin/?section=games')) ?>">Gestionar juegos</a>

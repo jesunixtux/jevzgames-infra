@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 return [
     'app' => [
-        'name' => 'JevzGames Infra',
+        'name' => 'JevzGames',
         'base_url' => '',
         'environment' => 'development',
         'server' => 'apache',

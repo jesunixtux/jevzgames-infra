@@ -80,7 +80,7 @@ Page::header('Instalador');
         <div class="form-grid">
             <div class="field">
                 <label for="app_name">Nombre de la plataforma</label>
-                <input id="app_name" name="app_name" value="<?= $value('app_name', 'JevzGames Infra') ?>" required maxlength="120">
+                <input id="app_name" name="app_name" value="<?= $value('app_name', 'JevzGames') ?>" required maxlength="120">
             </div>
             <div class="field">
                 <label for="base_url">URL base</label>

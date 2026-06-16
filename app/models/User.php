@@ -122,6 +122,27 @@ final class User
         $stmt->execute(['id' => $id]);
     }
 
+    public static function updatePassword(int $id, string $password): void
+    {
+        $pdo = Database::pdo();
+        $stmt = $pdo->prepare('UPDATE users SET password_hash = :password_hash, updated_at = NOW() WHERE id = :id');
+        $stmt->execute([
+            'id' => $id,
+            'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+        ]);
+
+        foreach ([
+            'DELETE FROM auth_remember_tokens WHERE user_id = :user_id',
+            'UPDATE sessions SET revoked_at = NOW() WHERE user_id = :user_id AND revoked_at IS NULL',
+            'UPDATE client_sessions SET status = "revoked", revoked_at = NOW() WHERE user_id = :user_id AND status = "active"',
+        ] as $sql) {
+            try {
+                $pdo->prepare($sql)->execute(['user_id' => $id]);
+            } catch (\Throwable) {
+            }
+        }
+    }
+
     public static function isEmailVerified(array $user): bool
     {
         return !empty($user['email_verified_at']);

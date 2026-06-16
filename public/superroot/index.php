@@ -223,7 +223,7 @@ Page::header('Superroot');
             <div class="form-grid">
                 <div class="field">
                     <label for="app_name">Nombre de plataforma</label>
-                    <input id="app_name" name="app_name" value="<?= e(app_config('app.name', 'JevzGames Infra')) ?>" required maxlength="120">
+                    <input id="app_name" name="app_name" value="<?= e(app_config('app.name', 'JevzGames')) ?>" required maxlength="120">
                 </div>
                 <div class="field">
                     <label for="base_url">URL base</label>
@@ -413,7 +413,7 @@ Page::header('Superroot');
 <?php if ($section === 'access'): ?>
     <section class="panel">
         <h2>Correo y EULA</h2>
-        <p class="muted">Controla verificacion de correo y el EULA vigente sin editar codigo.</p>
+        <p class="muted">Controla verificacion de correo, recuperacion de contrasena y el EULA vigente sin editar codigo.</p>
         <form class="form" method="post">
             <?= Csrf::field() ?>
             <input type="hidden" name="action" value="save_access_legal">
@@ -452,7 +452,7 @@ Page::header('Superroot');
                     <input id="email_verification_subject" name="email_verification_subject" value="<?= e($emailSettings['subject']) ?>" maxlength="180">
                 </div>
             </div>
-            <p class="muted">En XAMPP puedes usar <code>Log local</code>. Para envio real usa SMTP con PHPMailer.</p>
+            <p class="muted">En XAMPP puedes usar <code>Log local</code>. Para envio real usa SMTP con PHPMailer. Esta misma configuracion se usa para restablecer contrasenas.</p>
 
             <h3>SMTP PHPMailer</h3>
             <div class="form-grid">
