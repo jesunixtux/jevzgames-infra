@@ -9,8 +9,11 @@ use App\Models\CloudSave;
 use App\Models\Friend;
 use App\Models\Game;
 use App\Models\Inventory;
+use App\Models\PlatformSettings;
 use App\Models\PublicProfile;
 use App\Models\SocialSettings;
+use App\Models\User;
+use App\Models\UserAgreement;
 use App\Security\Auth;
 use App\Security\Csrf;
 
@@ -83,12 +86,17 @@ $avatarUrl = PublicProfile::avatarUrl($profile['avatar_path'] ?? '');
 $publicProfileUrl = '/user/@' . rawurlencode((string) ($profile['username'] ?? $user['username'] ?? ''));
 $linkedGames = Game::userLinks($userId);
 $unlockedAchievements = Achievement::unlockedForUser($userId);
+$achievementPoints = array_sum(array_map(static fn (array $achievement): int => (int) $achievement['points'], $unlockedAchievements));
+$canSeeAchievementMeta = Auth::hasRole(['admin', 'superroot', 'developer']);
 $friends = Friend::friendsForUser($userId);
 $pendingFriends = Friend::pendingForUser($userId);
 $cloudSaves = CloudSave::listForUser($userId);
 $inventoryItems = Inventory::listForUser($userId);
 $socialSettings = SocialSettings::settingsForUser($userId);
 $relationshipControls = SocialSettings::controlsForUser($userId);
+$emailSettings = PlatformSettings::emailVerificationSettings();
+$eulaSettings = PlatformSettings::eulaSettings();
+$latestAgreement = UserAgreement::latestForUser($userId);
 
 Page::header('Perfil');
 ?>
@@ -240,6 +248,11 @@ Page::header('Perfil');
         <p class="muted">Desbloqueados en tus juegos vinculados.</p>
     </article>
     <article class="tile metric-tile">
+        <span class="metric"><?= e($achievementPoints) ?></span>
+        <h2>Puntos</h2>
+        <p class="muted">Ganados por logros desbloqueados.</p>
+    </article>
+    <article class="tile metric-tile">
         <span class="metric"><?= e(count($friends)) ?></span>
         <h2>Amigos</h2>
         <p class="muted"><?= e(count($pendingFriends)) ?> solicitudes pendientes.</p>
@@ -252,7 +265,7 @@ Page::header('Perfil');
     <article class="tile metric-tile">
         <span class="metric"><?= e(count($linkedGames)) ?></span>
         <h2>Juegos</h2>
-        <p class="muted">Vinculados con OAuth.</p>
+        <p class="muted">Vinculados o licenciados.</p>
     </article>
     <article class="tile metric-tile">
         <span class="metric"><?= e(count($inventoryItems)) ?></span>
@@ -274,12 +287,19 @@ Page::header('Perfil');
                     <?php endif; ?>
                     <div>
                         <h3><?= e($achievement['title']) ?></h3>
-                        <p class="muted"><?= e($achievement['game']['name'] ?? '') ?> · <code><?= e($achievement['code']) ?></code></p>
+                        <?php if (!empty($achievement['description'])): ?>
+                            <p><?= e($achievement['description']) ?></p>
+                        <?php endif; ?>
+                        <?php if ($canSeeAchievementMeta): ?>
+                            <p class="muted"><?= e($achievement['game']['name'] ?? '') ?> &middot; <code><?= e($achievement['code']) ?></code></p>
+                        <?php endif; ?>
                     </div>
-                    <div class="achievement-item__meta">
-                        <strong><?= e($achievement['points']) ?> pts</strong>
-                        <span class="muted"><?= e($achievement['unlocked_at'] ?? '') ?></span>
-                    </div>
+                    <?php if ($canSeeAchievementMeta): ?>
+                        <div class="achievement-item__meta">
+                            <strong><?= e($achievement['points']) ?> pts</strong>
+                            <span class="muted"><?= e($achievement['unlocked_at'] ?? '') ?></span>
+                        </div>
+                    <?php endif; ?>
                 </article>
             <?php endforeach; ?>
         </div>
@@ -385,8 +405,32 @@ Page::header('Perfil');
         </div>
         <div>
             <dt>Email</dt>
-            <dd><?= e($user['email'] ?? '') ?></dd>
+            <dd>
+                <?= e($user['email'] ?? '') ?>
+                <?php if ($emailSettings['enabled']): ?>
+                    <span class="status-pill <?= User::isEmailVerified($user) ? 'status-pill--published' : 'status-pill--playtest' ?>">
+                        <?= User::isEmailVerified($user) ? 'Verificado' : 'Pendiente' ?>
+                    </span>
+                    <?php if (!User::isEmailVerified($user)): ?>
+                        <a href="<?= e(url('/verify-email/')) ?>">Reenviar</a>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </dd>
         </div>
+        <?php if ($eulaSettings['enabled']): ?>
+            <div>
+                <dt>EULA</dt>
+                <dd>
+                    Version vigente <?= e($eulaSettings['version']) ?>.
+                    <?php if ($latestAgreement): ?>
+                        Ultima aceptada <?= e($latestAgreement['version']) ?> el <?= e($latestAgreement['accepted_at']) ?>.
+                    <?php else: ?>
+                        Sin aceptacion registrada.
+                    <?php endif; ?>
+                    <a href="<?= e(url('/eula/')) ?>">Ver EULA</a>
+                </dd>
+            </div>
+        <?php endif; ?>
         <div>
             <dt>Estado</dt>
             <dd><?= e($user['status'] ?? '') ?></dd>

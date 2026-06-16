@@ -84,7 +84,7 @@ Request:
 
 ### POST `/api/oauth/device-code/`
 
-Inicia el vinculo OAuth tipo device-code para juegos Unity o clientes sin navegador embebido.
+Inicia el vinculo OAuth tipo device-code para juegos o clientes sin navegador embebido.
 
 Request:
 
@@ -111,7 +111,7 @@ Respuesta relevante:
 
 ### POST `/api/oauth/token/`
 
-Unity llama este endpoint cada `interval` segundos hasta que el usuario apruebe o expire.
+La app compatible llama este endpoint cada `interval` segundos hasta que el usuario apruebe o expire.
 
 Request:
 
@@ -122,11 +122,29 @@ Request:
 }
 ```
 
-Mientras espera, responde `success: false` con `message: authorization_pending`. Al aprobar, responde `success: true` con `access_token`.
+Mientras espera, responde `success: false` con `message: authorization_pending`. Al aprobar, responde `success: true` con `access_token` y la licencia activa del juego.
 
 ### POST `/api/user-profile/`
 
 Endpoint autenticado para validar el token y obtener el usuario vinculado al juego.
+
+Header:
+
+```text
+Authorization: Bearer jvg_at_...
+```
+
+Body:
+
+```json
+{}
+```
+
+La respuesta incluye `license` si el usuario tiene licencia activa para el juego.
+
+### POST `/api/game-license/check/`
+
+Endpoint autenticado para DRM basico. Confirma usuario, juego, licencia activa y ultima build instalable.
 
 Header:
 
@@ -192,7 +210,7 @@ Actualiza progreso de un logro configurable.
   "mode": "unlock",
   "progress": 1,
   "progress_data": {
-    "source": "unity"
+    "source": "game"
   }
 }
 ```
@@ -221,7 +239,7 @@ Authorization: Bearer jvg_at_...
 
 ### POST `/api/redeem/`
 
-Endpoint autenticado con token Bearer de juego. Canjea un codigo y agrega la recompensa al inventario.
+Endpoint autenticado con token Bearer de juego. Canjea un codigo y agrega la recompensa al inventario o licencia el juego configurado.
 
 ```json
 {
@@ -235,7 +253,8 @@ Endpoint autenticado con token Bearer de juego. Canjea un codigo y agrega la rec
 {
   "item": "skin_blue",
   "quantity": 1,
-  "name": "Skin azul"
+  "name": "Skin azul",
+  "image_path": "/uploads/items/skin_blue.png"
 }
 ```
 
@@ -248,6 +267,12 @@ O multiples items:
     {"item_key": "coins", "quantity": 100, "type": "currency"}
   ]
 }
+```
+
+O licencias de juego:
+
+```json
+{"game_slug":"jumpfall"}
 ```
 
 ### POST `/api/cloud-saves/config/`
@@ -273,7 +298,7 @@ Guarda una partida cloud en la configuracion y slot indicados.
     "coins": 77
   },
   "metadata": {
-    "source": "unity"
+    "source": "game"
   }
 }
 ```
@@ -339,6 +364,28 @@ Cada juego puede incluir `install_build` si Admin subio o registro un `.zip` ins
 }
 ```
 
+### POST `/api/client/obtain-game/`
+
+Crea la licencia del juego para el usuario autenticado y lo agrega a biblioteca. Solo funciona si el juego visible tiene build instalable.
+
+Header:
+
+```text
+Authorization: Bearer jvg_ct_...
+```
+
+Body:
+
+```json
+{"game_id": 1}
+```
+
+Tambien acepta:
+
+```json
+{"slug": "jumpfall"}
+```
+
 ### POST `/api/client/inventory/`
 
 Lista inventario completo del usuario autenticado por `client_token`.
@@ -362,7 +409,7 @@ La tabla `game_api_keys` guarda:
 - estado activa o revocada
 - juego asociado
 
-La clave secreta no se guarda en texto plano. Al crear una API key se muestra una sola vez y despues solo se conserva el hash. El flujo OAuth de Unity usa la `public_key`; la `secret_key` queda disponible para flujos servidor a servidor futuros.
+La clave secreta no se guarda en texto plano. Al crear una API key se muestra una sola vez y despues solo se conserva el hash. El flujo OAuth de juego usa la `public_key`; la `secret_key` queda disponible para flujos servidor a servidor futuros.
 
 ## OAuth externo para login web
 

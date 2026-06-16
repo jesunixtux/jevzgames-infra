@@ -20,6 +20,7 @@ try {
         (string) ($input['client_name'] ?? '')
     ));
 } catch (Throwable $exception) {
-    $status = str_contains($exception->getMessage(), 'suspendida') ? 403 : 400;
-    api_response(false, $exception->getMessage(), [], $status);
+    $message = $exception->getMessage();
+    $status = (str_contains($message, 'suspendida') || str_contains($message, 'verificar tu correo')) ? 403 : 400;
+    api_response(false, $message, [], $status);
 }

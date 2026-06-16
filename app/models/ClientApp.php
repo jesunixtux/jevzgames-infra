@@ -47,6 +47,10 @@ final class ClientApp
             throw new RuntimeException('La cuenta no esta activa.');
         }
 
+        if (PlatformSettings::emailVerificationRequired() && !User::isEmailVerified($user)) {
+            throw new RuntimeException('Debes verificar tu correo antes de iniciar sesion.');
+        }
+
         $token = 'jvg_ct_' . bin2hex(random_bytes(32));
         $stmt = Database::pdo()->prepare(
             'INSERT INTO client_sessions (user_id, token_hash, client_name, status, expires_at, created_at)
@@ -110,6 +114,7 @@ final class ClientApp
             'linked_games' => array_map(static function (array $game) use ($builds): array {
                 $gameId = (int) $game['game_id'];
                 $game['install_build'] = $builds[$gameId] ?? null;
+                $game['license'] = Game::licenseForUserGame((int) $game['user_id'], $gameId);
                 return $game;
             }, $linkedGames),
             'catalog' => array_map(static function (array $game) use ($builds): array {
@@ -117,6 +122,50 @@ final class ClientApp
                 $game['install_build'] = $builds[$gameId] ?? null;
                 return $game;
             }, $catalog),
+        ];
+    }
+
+    public static function obtainGame(int $userId, int $gameId): array
+    {
+        self::ensureEnabled();
+        if ($userId <= 0 || $gameId <= 0) {
+            throw new RuntimeException('Juego invalido.');
+        }
+
+        $stmt = Database::pdo()->prepare(
+            'SELECT id, name, slug, status, current_version
+             FROM games
+             WHERE id = :id
+               AND status IN ("development", "playtest", "beta", "published")
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $gameId]);
+        $game = $stmt->fetch();
+        if (!is_array($game)) {
+            throw new RuntimeException('El juego no existe o no esta disponible.');
+        }
+
+        $build = GameBuild::latestForGame($gameId);
+        if ($build === null || empty($build['download_url'])) {
+            throw new RuntimeException('Este juego aun no tiene build instalable.');
+        }
+
+        $license = Game::grantLicense($userId, $gameId, 'client');
+
+        return [
+            'game' => [
+                'game_id' => $gameId,
+                'name' => (string) $game['name'],
+                'slug' => (string) $game['slug'],
+                'status' => (string) $game['status'],
+                'current_version' => $game['current_version'] ?? null,
+                'is_linked' => 1,
+                'has_license' => 1,
+                'install_build' => $build,
+                'license' => $license,
+            ],
+            'license' => $license,
+            'install_build' => $build,
         ];
     }
 

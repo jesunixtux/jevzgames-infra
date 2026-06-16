@@ -76,6 +76,30 @@ CREATE TABLE IF NOT EXISTS auth_remember_tokens (
     CONSTRAINT fk_auth_remember_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    token_hash VARCHAR(128) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_email_verification_tokens_user (user_id),
+    INDEX idx_email_verification_tokens_expires (expires_at),
+    CONSTRAINT fk_email_verification_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_eula_acceptances (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    version VARCHAR(40) NOT NULL,
+    accepted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL,
+    UNIQUE KEY uq_user_eula_acceptances_user_version (user_id, version),
+    INDEX idx_user_eula_acceptances_user (user_id),
+    CONSTRAINT fk_user_eula_acceptances_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS games (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     owner_user_id INT UNSIGNED NULL,
@@ -107,6 +131,25 @@ CREATE TABLE IF NOT EXISTS user_games (
     INDEX idx_user_games_game (game_id),
     CONSTRAINT fk_user_games_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_user_games_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_game_licenses (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    game_id INT UNSIGNED NOT NULL,
+    source VARCHAR(80) NOT NULL DEFAULT 'manual',
+    license_key_hash VARCHAR(128) NOT NULL UNIQUE,
+    license_key_preview VARCHAR(32) NOT NULL,
+    status ENUM('active', 'revoked') NOT NULL DEFAULT 'active',
+    granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at DATETIME NULL,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_game_licenses_scope (user_id, game_id),
+    INDEX idx_user_game_licenses_user (user_id),
+    INDEX idx_user_game_licenses_game (game_id),
+    INDEX idx_user_game_licenses_status (status),
+    CONSTRAINT fk_user_game_licenses_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_game_licenses_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS game_builds (

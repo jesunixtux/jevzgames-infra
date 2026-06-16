@@ -10,6 +10,16 @@ use App\Security\Auth;
 require_installed();
 Auth::requireLogin();
 
+function inventory_item_image_url(?string $path): string
+{
+    $path = trim((string) $path);
+    if ($path === '') {
+        return '';
+    }
+
+    return filter_var($path, FILTER_VALIDATE_URL) ? $path : url('/' . ltrim($path, '/'));
+}
+
 $user = Auth::user();
 $items = Inventory::listForUser((int) ($user['id'] ?? 0));
 
@@ -34,11 +44,15 @@ Page::header('Inventario');
     <?php else: ?>
         <div class="game-grid">
             <?php foreach ($items as $item): ?>
+                <?php $imageUrl = inventory_item_image_url($item['image_path'] ?? null); ?>
                 <article class="game-card">
                     <div class="game-card__header">
                         <h3><?= e($item['name']) ?></h3>
                         <span class="status-pill status-pill--published">x<?= e($item['quantity']) ?></span>
                     </div>
+                    <?php if ($imageUrl !== ''): ?>
+                        <img class="inventory-thumb" src="<?= e($imageUrl) ?>" alt="">
+                    <?php endif; ?>
                     <p class="muted">
                         <?= e($item['game']['name'] ?? 'Global') ?>
                         · <code><?= e($item['item_key']) ?></code>

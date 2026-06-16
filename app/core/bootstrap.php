@@ -76,3 +76,41 @@ if (session_status() === PHP_SESSION_NONE) {
     ]);
     session_start();
 }
+
+if (PHP_SAPI !== 'cli' && is_installed()) {
+    try {
+        $maintenance = \App\Models\PlatformSettings::maintenanceSettings();
+        if (!empty($maintenance['enabled']) && !\App\Security\Auth::hasRole(['admin', 'superroot', 'developer'])) {
+            $path = current_path();
+            $base = public_base_path();
+            $route = $base !== '' && str_starts_with($path, $base) ? substr($path, strlen($base)) : $path;
+            $route = '/' . ltrim($route, '/');
+            $allowedPrefixes = ['/login/', '/logout/', '/assets/', '/install/'];
+            $allowed = in_array($route, ['/login', '/logout', '/install'], true);
+            foreach ($allowedPrefixes as $prefix) {
+                if (str_starts_with($route, $prefix)) {
+                    $allowed = true;
+                    break;
+                }
+            }
+
+            if (!$allowed) {
+                if (str_starts_with($route, '/api/')) {
+                    api_response(false, (string) $maintenance['message'], [
+                        'maintenance' => true,
+                    ], 503);
+                }
+
+                http_response_code(503);
+                $message = e((string) $maintenance['message']);
+                $loginUrl = e(url('/login/'));
+                echo '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">';
+                echo '<title>Mantenimiento</title><link rel="stylesheet" href="' . e(asset_url('css/main.css')) . '"></head><body>';
+                echo '<main class="main"><section class="panel panel--narrow"><h1>Mantenimiento</h1><p class="muted">' . $message . '</p>';
+                echo '<div class="actions"><a class="button" href="' . $loginUrl . '">Login interno</a></div></section></main></body></html>';
+                exit;
+            }
+        }
+    } catch (\Throwable) {
+    }
+}

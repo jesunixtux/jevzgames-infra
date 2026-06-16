@@ -38,6 +38,16 @@ final class User
         return $user;
     }
 
+    public static function findByEmail(string $email): ?array
+    {
+        $pdo = Database::pdo();
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE email = :email LIMIT 1');
+        $stmt->execute(['email' => trim($email)]);
+        $user = $stmt->fetch();
+
+        return is_array($user) ? $user : null;
+    }
+
     public static function rolesForUser(int $id): array
     {
         $pdo = Database::pdo();
@@ -57,17 +67,19 @@ final class User
     {
         $pdo = Database::pdo();
         $pdo->beginTransaction();
+        $emailVerifiedAt = PlatformSettings::emailVerificationEnabled() ? null : date('Y-m-d H:i:s');
 
         try {
             $stmt = $pdo->prepare(
-                'INSERT INTO users (username, email, password_hash, status, display_name, created_at, updated_at)
-                 VALUES (:username, :email, :password_hash, "active", :display_name, NOW(), NOW())'
+                'INSERT INTO users (username, email, password_hash, status, display_name, email_verified_at, created_at, updated_at)
+                 VALUES (:username, :email, :password_hash, "active", :display_name, :email_verified_at, NOW(), NOW())'
             );
             $stmt->execute([
                 'username' => $username,
                 'email' => $email,
                 'password_hash' => password_hash($password, PASSWORD_DEFAULT),
                 'display_name' => $username,
+                'email_verified_at' => $emailVerifiedAt,
             ]);
 
             $userId = (int) $pdo->lastInsertId();
@@ -102,5 +114,16 @@ final class User
         $pdo = Database::pdo();
         $stmt = $pdo->prepare('UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = :id');
         $stmt->execute(['id' => $id]);
+    }
+
+    public static function markEmailVerified(int $id): void
+    {
+        $stmt = Database::pdo()->prepare('UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW() WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    }
+
+    public static function isEmailVerified(array $user): bool
+    {
+        return !empty($user['email_verified_at']);
     }
 }

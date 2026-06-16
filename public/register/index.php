@@ -4,7 +4,10 @@ declare(strict_types=1);
 require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bootstrap.php';
 
 use App\Core\Page;
+use App\Models\EmailVerification;
+use App\Models\PlatformSettings;
 use App\Models\User;
+use App\Models\UserAgreement;
 use App\Security\Auth;
 use App\Security\Csrf;
 use App\Services\ActivityLogger;
@@ -16,6 +19,8 @@ if (Auth::check()) {
 }
 
 $errors = [];
+$emailSettings = PlatformSettings::emailVerificationSettings();
+$eulaSettings = PlatformSettings::eulaSettings();
 
 if (request_is_post()) {
     if (!Csrf::validate($_POST['_csrf'] ?? null)) {
@@ -42,11 +47,24 @@ if (request_is_post()) {
             $errors[] = 'Las contrasenas no coinciden.';
         }
 
+        if ($eulaSettings['enabled'] && $eulaSettings['required'] && !isset($_POST['accept_eula'])) {
+            $errors[] = 'Debes aceptar el EULA vigente para crear la cuenta.';
+        }
+
         if ($errors === []) {
             try {
                 $userId = User::create($username, $email, $password, 'user');
+                if ($eulaSettings['enabled'] && $eulaSettings['required']) {
+                    UserAgreement::acceptCurrent($userId);
+                }
+                if ($emailSettings['enabled']) {
+                    EmailVerification::sendForUser($userId);
+                }
                 ActivityLogger::info('user_registered', ['user_id' => $userId]);
-                flash('message', 'Cuenta creada. Ahora puedes iniciar sesion.');
+                $message = $emailSettings['enabled']
+                    ? 'Cuenta creada. Revisa tu correo para verificarla. En XAMPP con modo log, el enlace queda en storage/logs/app.log.'
+                    : 'Cuenta creada. Ahora puedes iniciar sesion.';
+                flash('message', $message);
                 redirect_to('/login/');
             } catch (Throwable) {
                 $errors[] = 'No se pudo crear la cuenta. Revisa si el usuario o email ya existen.';
@@ -87,6 +105,12 @@ Page::header('Registro');
             <label for="password_confirm">Confirmar contrasena</label>
             <input id="password_confirm" name="password_confirm" type="password" minlength="8" required>
         </div>
+        <?php if ($eulaSettings['enabled']): ?>
+            <label class="checkbox-field">
+                <input type="checkbox" name="accept_eula" value="1" <?= !empty($_POST['accept_eula']) ? 'checked' : '' ?> <?= $eulaSettings['required'] ? 'required' : '' ?>>
+                Acepto el <a href="<?= e(url('/eula/')) ?>" target="_blank" rel="noopener">EULA version <?= e($eulaSettings['version']) ?></a>
+            </label>
+        <?php endif; ?>
         <div class="actions">
             <button type="submit">Crear cuenta</button>
             <a class="button button--secondary" href="<?= e(url('/login/')) ?>">Ya tengo cuenta</a>

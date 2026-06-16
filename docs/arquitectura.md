@@ -43,6 +43,8 @@ La base principal guarda datos compartidos por toda la infraestructura:
 - Cuentas externas vinculadas.
 - Logs de actividad.
 - Inventario y canjes por usuario.
+- Tokens de verificacion de correo.
+- Aceptaciones de EULA por version.
 - Publish requests, Workshop y sesiones del cliente.
 
 ## Bases externas por juego
@@ -65,6 +67,8 @@ Los juegos `archived` no se muestran en el catalogo publico.
 El detalle usa `?game=slug` y permite vincular la cuenta del usuario con el juego mediante `user_games`.
 
 El vinculo manual desde `/games/` queda reservado a `admin` y `superroot`. Los usuarios normales se vinculan al iniciar sesion desde el juego o cliente. Al desvincular un juego se purgan datos del usuario para ese juego: cloud saves, player data, logros, tokens OAuth e inventario asociado.
+
+La biblioteca del usuario se separa en `/library/` y lista los juegos vinculados con build instalable cuando existe. `/achievements/` lista logros por juego, progreso, imagen bloqueada/desbloqueada y puntos.
 
 ## CDN
 
@@ -159,6 +163,32 @@ Admin configura:
 
 Unity actualiza progreso con `achievements/progress` usando modo `set`, `add` o `unlock`.
 
+## Verificacion de correo y EULA
+
+`PlatformSettings` guarda en `system_settings` los flags de acceso legal:
+
+- `auth.email_verification_enabled`
+- `auth.email_verification_required`
+- `auth.email_verification_delivery`
+- `auth.email_verification_ttl_hours`
+- `mail.smtp_host`
+- `mail.smtp_port`
+- `mail.smtp_username`
+- `mail.smtp_password`
+- `mail.smtp_encryption`
+- `mail.smtp_auth`
+- `legal.eula_enabled`
+- `legal.eula_required`
+- `legal.eula_version`
+- `legal.eula_title`
+- `legal.eula_body`
+
+Los tokens viven en `email_verification_tokens` como hash HMAC. El enlace plano solo se entrega por SMTP usando PHPMailer o queda registrado en `storage/logs/app.log` cuando el modo es `log`.
+
+PHPMailer es la unica dependencia externa permitida y se carga manualmente desde `phpmailer/src`. No requiere Composer. El password SMTP se guarda cifrado en `system_settings` y marcado como privado.
+
+Las aceptaciones de EULA viven en `user_eula_acceptances` con `user_id`, `version`, fecha, IP y user-agent. Si el EULA requerido cambia de version, el siguiente login redirige a `/eula/` para aceptar la version vigente.
+
 ## Roles
 
 - `user`: usuario normal.
@@ -188,6 +218,7 @@ El panel `/superroot/` concentra configuracion sensible:
 - Configuracion global de plataforma.
 - Configuracion CDN local o externa.
 - Ajustes basicos de sesion y API.
+- Verificacion por correo y EULA en la seccion `Acceso legal`.
 - Integraciones externas configurables.
 - Gestion de roles operativos.
 - Mantenimiento y revision de logs.

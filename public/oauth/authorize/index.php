@@ -30,7 +30,7 @@ if ($device && Auth::check() && $device['status'] === 'pending' && !Auth::hasRol
     try {
         OAuth::approveDevice((int) $device['id'], $userId);
         ActivityLogger::info('oauth_device_auto_approved', ['user_id' => $userId, 'game_id' => (int) $device['game_id'], 'device_id' => (int) $device['id']]);
-        flash('message', 'Juego vinculado automaticamente. Ya puedes volver al cliente o Unity.');
+        flash('message', 'Juego vinculado automaticamente. Ya puedes volver a la app compatible.');
     } catch (Throwable $exception) {
         flash('error', $exception->getMessage());
     }
@@ -51,7 +51,7 @@ if (request_is_post() && $device && Auth::check()) {
         if ($action === 'approve') {
             OAuth::approveDevice((int) $device['id'], $userId);
             ActivityLogger::info('oauth_device_approved', ['user_id' => $userId, 'game_id' => (int) $device['game_id'], 'device_id' => (int) $device['id']]);
-            flash('message', 'Juego vinculado. Ya puedes volver a Unity.');
+            flash('message', 'Juego vinculado. Ya puedes volver a la app compatible.');
         } elseif ($action === 'deny') {
             OAuth::denyDevice((int) $device['id'], $userId);
             ActivityLogger::info('oauth_device_denied', ['user_id' => $userId, 'game_id' => (int) $device['game_id'], 'device_id' => (int) $device['id']]);
@@ -104,7 +104,7 @@ Page::header('Autorizar juego');
         </dl>
 
         <?php if ($device['status'] === 'pending'): ?>
-            <p class="muted">Al aprobar, tu cuenta queda vinculada a este juego y Unity recibe un token de acceso.</p>
+            <p class="muted">Este juego requiere acceso a tu cuenta para continuar.</p>
             <div class="actions">
                 <form method="post">
                     <?= Csrf::field() ?>
@@ -124,7 +124,7 @@ Page::header('Autorizar juego');
         <?php elseif ($device['status'] === 'denied'): ?>
             <div class="alert alert--error">Solicitud rechazada.</div>
         <?php else: ?>
-            <div class="alert alert--error">Solicitud expirada. Inicia el vinculo otra vez desde Unity.</div>
+            <div class="alert alert--error">Solicitud expirada. Inicia el vinculo otra vez desde la app compatible.</div>
         <?php endif; ?>
     <?php endif; ?>
 </section>

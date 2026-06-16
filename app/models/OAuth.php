@@ -131,7 +131,7 @@ final class OAuth
         }
 
         $device = self::assertPending($device);
-        Game::linkUser($userId, (int) $device['game_id']);
+        Game::grantLicense($userId, (int) $device['game_id'], 'oauth');
 
         $stmt = Database::pdo()->prepare(
             'UPDATE game_oauth_device_codes
@@ -269,6 +269,7 @@ final class OAuth
                 'slug' => (string) ($device['game_slug'] ?? ''),
                 'current_version' => $device['current_version'] ?? null,
             ],
+            'license' => Game::licenseForUserGame((int) $device['approved_user_id'], (int) $device['game_id']),
         ];
     }
 

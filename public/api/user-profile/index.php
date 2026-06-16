@@ -5,6 +5,7 @@ require dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR 
 
 use App\Models\OAuth;
 use App\Models\PublicProfile;
+use App\Models\Game;
 
 require_installed();
 
@@ -41,6 +42,7 @@ try {
             'status' => (string) $token['game_status'],
             'current_version' => $token['current_version'] ?? null,
         ],
+        'license' => Game::licenseForUserGame((int) $token['user_id'], (int) $token['game_id']),
         'linked' => true,
     ]);
 } catch (Throwable $exception) {

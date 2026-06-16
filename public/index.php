@@ -4,15 +4,17 @@ declare(strict_types=1);
 require dirname(__DIR__) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bootstrap.php';
 
 use App\Core\Page;
+use App\Models\PlatformSettings;
 use App\Security\Auth;
 
 $user = Auth::user();
+$contentSettings = is_installed() ? PlatformSettings::contentSettings() : [];
 
 Page::header('Inicio');
 ?>
 <section class="panel">
-    <h1><?= e((string) app_config('app.name', 'JevzGames Infra')) ?></h1>
-    <p class="muted">Infraestructura monolitica modular para usuarios, juegos, APIs y paneles internos.</p>
+    <h1><?= e($contentSettings['home_title'] ?? (string) app_config('app.name', 'JevzGames Infra')) ?></h1>
+    <p class="muted"><?= e($contentSettings['home_intro'] ?? 'Infraestructura monolitica modular para usuarios, juegos, APIs y paneles internos.') ?></p>
     <?php if (!is_installed()): ?>
         <p>El sistema todavia no esta instalado. Ejecuta el instalador inicial para crear la configuracion privada y el usuario superroot.</p>
         <div class="actions">

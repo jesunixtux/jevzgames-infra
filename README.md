@@ -10,18 +10,21 @@ La primera fase deja una base funcional y simple:
 - Usuario `superroot` creado solo desde el instalador.
 - Registro, login, logout y perfil basico.
 - Mantener sesion iniciada con token persistente hasheado.
+- Verificacion por correo configurable con modo local por log o SMTP con PHPMailer.
+- EULA configurable y versionado desde Superroot.
 - Modo oscuro local por navegador.
 - Roles base: `user`, `developer`, `admin`, `supporter`, `superroot`.
 - Soporte basico con tickets, chat por polling, extension de tiempo y cierre.
 - Panel Admin para usuarios, juegos, codigos canjeables, soporte y logs.
-- Panel Superroot para configuracion global, CDN, integraciones, usuarios y mantenimiento.
+- Panel Superroot para configuracion global, contenido editable, CDN, integraciones, usuarios y mantenimiento.
 - Pagina `/games/` con catalogo, detalle y vinculacion usuario-juego.
+- Paginas `/library/` y `/achievements/` para biblioteca y logros del usuario.
 - Helper de rutas y helper CDN `asset_url()`.
 - API JSON inicial en `/api/status/`.
-- OAuth device-code para vincular un juego Unity a la cuenta principal sin pedir contrasena dentro del juego.
+- OAuth device-code para vincular un juego o app compatible a la cuenta principal sin pedir contrasena dentro del juego.
 - APIs de runtime para perfil, BD dedicada, datos persistentes de jugador y logros configurables.
 - Logros con imagen desbloqueada/bloqueada.
-- Inventario, codigos canjeables reales y pagina `/redeem/`.
+- Inventario con imagenes, codigos canjeables reales, licencias de juegos y pagina `/redeem/`.
 - Comunidad, mensajes, notificaciones por sesion y perfiles publicos.
 - Publish on Games, Workshop y cliente tipo Steam configurables desde Superroot.
 - Esquema SQL preparado para usuarios, juegos, roles, codigos, soporte, integraciones y API keys.
@@ -87,8 +90,12 @@ public/
   install/index.php
   login/index.php
   register/index.php
+  verify-email/index.php
+  eula/index.php
   logout/index.php
   games/index.php
+  library/index.php
+  achievements/index.php
   inventory/index.php
   redeem/index.php
   publish-on-games/index.php
@@ -204,10 +211,22 @@ Permite:
 - Filtrar por estado.
 - Abrir detalle por `?game=slug`.
 - Ver version, estado, descripcion y JSON publico.
-- Vincular o desvincular el juego a la cuenta del usuario.
-- Desvincular borra datos de ese juego para el usuario: cloud saves, player data, logros, tokens e inventario del juego.
+- Obtener juegos con build instalable, vincular o desvincular el juego a la cuenta del usuario.
+- Desvincular borra datos de ese juego para el usuario: cloud saves, player data, logros, tokens, inventario y licencia del juego.
 
-El boton manual de vincular queda reservado a `admin` y `superroot`. Los jugadores normales se vinculan al iniciar sesion desde Unity o desde el cliente.
+El boton manual de vincular queda reservado a `admin` y `superroot`. Los jugadores normales se vinculan al iniciar sesion desde una app compatible o al obtener un juego instalable.
+
+La biblioteca del usuario vive en:
+
+```text
+/library/
+```
+
+Los logros visibles y su progreso viven en:
+
+```text
+/achievements/
+```
 
 Un juego se registra desde Admin en la tabla `games` con:
 
@@ -225,17 +244,17 @@ Un juego se registra desde Admin en la tabla `games` con:
 
 La cuenta de usuario se crea una sola vez en la base principal. La relacion con cada juego se guarda en `user_games`.
 
-Los juegos consumen APIs HTTP/JSON con API keys por juego. El flujo recomendado para Unity es:
+Los juegos consumen APIs HTTP/JSON con API keys por juego. El flujo recomendado para una app compatible es:
 
 1. Admin crea una API key desde `/admin/?section=games`.
-2. Unity guarda la `public_key` del juego.
-3. Al ejecutar, Unity llama `POST /api/oauth/device-code/`.
+2. La app guarda la `public_key` del juego.
+3. Al ejecutar, la app llama `POST /api/oauth/device-code/`.
 4. La app abre `/oauth/authorize/?user_code=...`.
 5. El usuario inicia sesion. Para usuarios normales el vinculo se aprueba automaticamente; admin y superroot conservan aprobacion manual para pruebas.
-6. Unity hace polling a `POST /api/oauth/token/` y guarda el token Bearer.
+6. La app hace polling a `POST /api/oauth/token/` y guarda el token Bearer.
 7. Las llamadas autenticadas usan `Authorization: Bearer <token>`.
 
-En el proyecto Unity de prueba se agrego `Assets/JevzGames/JevzGamesOAuthClient.cs`. Adjuntalo a un GameObject, pega la `public_key` del juego y al iniciar abrira el navegador para aprobar el vinculo.
+Al aprobarse el OAuth, el backend crea el vinculo y una licencia activa para el juego.
 
 ## Runtime de juego
 
@@ -249,6 +268,7 @@ El backend expone APIs autenticadas con Bearer token para que el juego no toque 
 - `POST /api/achievements/unlock/`: atajo para desbloquear un logro.
 - `POST /api/inventory/list/`: inventario del jugador para el juego.
 - `POST /api/redeem/`: canje de codigos desde el juego.
+- `POST /api/game-license/check/`: confirma usuario, juego, licencia activa y build instalable para DRM basico.
 
 La BD dedicada se configura en Admin dentro del juego, campo `BD dedicada JSON`, por ejemplo:
 
@@ -256,7 +276,7 @@ La BD dedicada se configura en Admin dentro del juego, campo `BD dedicada JSON`,
 {"enabled":true,"host":"127.0.0.1","port":3306,"database":"mi_juego_db","user":"root","password":"","charset":"utf8mb4"}
 ```
 
-Las credenciales nunca se entregan por API a Unity; solo las usa el backend.
+Las credenciales nunca se entregan por API al juego; solo las usa el backend.
 
 ## Soporte
 
@@ -289,6 +309,7 @@ Funciones actuales:
 - Crear y editar juegos basicos.
 - Cambiar estado de juegos.
 - Crear codigos canjeables con hash HMAC y preview.
+- Crear codigos que entregan items, imagenes de items o licencias de juegos.
 - Revisar solicitudes de `/publish-on-games/`.
 - Configurar Workshop por juego y moderar items.
 - Activar o desactivar codigos.
@@ -311,11 +332,39 @@ Funciones actuales:
 - Configuracion de nombre, URL base, entorno, servidor, CDN, duracion de sesion y exposicion de errores API en desarrollo.
 - Integraciones externas configurables con `client_secret` guardado como hash.
 - Activar o desactivar Publish on Games, Workshop y cliente tipo Steam.
+- Editar textos publicos principales desde `Contenido`.
+- Configurar verificacion por correo en modo `log` o `mail`.
+- Configurar EULA publico, version vigente y obligatoriedad de aceptacion.
 - Gestion simple de roles `user`, `developer`, `admin`, `supporter`.
 - Bloqueo, desbloqueo y estado de recuperacion de usuarios.
+- Modo mantenimiento global para dejar entrar solo a `admin`, `superroot` y `developer`.
 - Vista de mantenimiento y ultimos logs.
 
 El rol `superroot` no se asigna ni se quita desde la tabla de usuarios.
+
+## Correo y EULA
+
+Superroot configura esto en:
+
+```text
+/superroot/?section=access
+```
+
+Verificacion por correo:
+
+- `Log local`: recomendado en XAMPP. El enlace queda en `storage/logs/app.log` como evento `email_verification_link`.
+- `SMTP con PHPMailer`: usa la carpeta externa `phpmailer/` y los datos SMTP configurados en Superroot.
+- Si `Requerir correo verificado` esta activo, login web y login del cliente rechazan cuentas sin `email_verified_at`.
+- El password SMTP se guarda cifrado en `system_settings`.
+
+Rutas publicas:
+
+```text
+/verify-email/
+/eula/
+```
+
+Si el EULA esta marcado como requerido, el registro pide aceptarlo. Si cambias la version, los usuarios deberan aceptar la version vigente en `/eula/`.
 
 ## Inventario y canjes
 
@@ -327,10 +376,16 @@ POST /api/redeem/
 POST /api/client/redeem/
 ```
 
-`reward_json` puede entregar uno o varios items:
+`reward_json` puede entregar uno o varios items, con imagen opcional:
 
 ```json
-{"items":[{"item_key":"skin_blue","quantity":1,"name":"Skin azul"}]}
+{"items":[{"item_key":"skin_blue","quantity":1,"name":"Skin azul","image_path":"/uploads/items/skin_blue.png"}]}
+```
+
+Tambien puede entregar una licencia de juego:
+
+```json
+{"game_slug":"jumpfall"}
 ```
 
 El usuario ve sus recompensas en:
@@ -392,6 +447,7 @@ Flujo minimo para montar un launcher:
 4. Guarda `client_token` localmente.
 5. Usa `Authorization: Bearer jvg_ct_...` para:
    - `POST /api/client/library/`
+   - `POST /api/client/obtain-game/`
    - `POST /api/client/inventory/`
    - `POST /api/client/redeem/`
 6. Usa `POST /api/client/logout/` para revocar el token.
@@ -408,9 +464,9 @@ clients/cef-steam-client/
 
 Para ejecutarlo:
 
-```powershell
+```bat
 cd C:\xampp\jevzgames-infra\clients\cef-steam-client
-.\run-local.ps1
+.\run-local.cmd
 ```
 
 Para que un juego se instale tipo Steam:
@@ -420,7 +476,9 @@ Para que un juego se instale tipo Steam:
 3. En `/admin/?section=games`, bloque `Builds instalables`, sube el `.zip`.
 4. Indica la ruta relativa del ejecutable, por ejemplo `JumpFall.exe` o `Windows/JumpFall.exe`.
 5. El cliente recibe `install_build` desde `/api/client/library/`.
-6. El cliente descarga, verifica checksum, extrae en `%AppData%\JevzGamesClient\games\<slug>` y ejecuta el `.exe`.
+6. Si el juego esta en catalogo y tiene build, el cliente llama `/api/client/obtain-game/` para crear licencia y agregarlo a biblioteca.
+7. El cliente compara la version instalada local con la ultima build y muestra Instalar, Reinstalar o Actualizar.
+8. El cliente descarga, verifica checksum, extrae en `%AppData%\JevzGamesClient\games\<slug>` y ejecuta el `.exe`.
 
 La primera compilacion del cliente descarga CefSharp/CEF desde NuGet y puede tardar bastante porque CEF es pesado.
 

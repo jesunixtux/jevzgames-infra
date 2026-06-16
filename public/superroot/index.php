@@ -9,13 +9,14 @@ use App\Models\Superroot;
 use App\Security\Auth;
 use App\Security\Csrf;
 use App\Services\ActivityLogger;
+use App\Services\Mailer;
 
 require_installed();
 Auth::requireRole('superroot');
 
 $user = Auth::user();
 $userId = (int) ($user['id'] ?? 0);
-$sections = ['overview', 'config', 'features', 'integrations', 'users', 'maintenance'];
+$sections = ['overview', 'config', 'features', 'content', 'access', 'integrations', 'users', 'maintenance'];
 $section = (string) ($_GET['section'] ?? 'overview');
 if (!in_array($section, $sections, true)) {
     $section = 'overview';
@@ -51,6 +52,45 @@ if (request_is_post()) {
             redirect_to('/superroot/?section=features');
         }
 
+        if ($action === 'save_access_legal') {
+            PlatformSettings::saveAccessLegal($_POST);
+            ActivityLogger::info('superroot_access_legal_saved', ['user_id' => $userId]);
+            flash('message', 'Acceso, correo y EULA actualizados.');
+            redirect_to('/superroot/?section=access');
+        }
+
+        if ($action === 'save_content') {
+            PlatformSettings::saveContent($_POST);
+            ActivityLogger::info('superroot_content_saved', ['user_id' => $userId]);
+            flash('message', 'Contenido publico actualizado.');
+            redirect_to('/superroot/?section=content');
+        }
+
+        if ($action === 'save_maintenance') {
+            PlatformSettings::saveMaintenance($_POST);
+            ActivityLogger::info('superroot_maintenance_saved', ['user_id' => $userId]);
+            flash('message', 'Modo mantenimiento actualizado.');
+            redirect_to('/superroot/?section=maintenance');
+        }
+
+        if ($action === 'send_email_test') {
+            $settings = PlatformSettings::emailVerificationSettings();
+            if ($settings['delivery'] !== 'smtp') {
+                throw new RuntimeException('Selecciona y guarda SMTP antes de enviar una prueba.');
+            }
+            Mailer::send(
+                $settings,
+                (string) ($user['email'] ?? ''),
+                (string) ($user['username'] ?? 'superroot'),
+                'Prueba SMTP JevzGames',
+                "Este es un correo de prueba de JevzGames.\n\nSi lo recibiste, PHPMailer SMTP esta funcionando.",
+                '<p>Este es un correo de prueba de JevzGames.</p><p>Si lo recibiste, PHPMailer SMTP esta funcionando.</p>'
+            );
+            ActivityLogger::info('superroot_email_test_sent', ['user_id' => $userId]);
+            flash('message', 'Correo de prueba enviado a tu cuenta.');
+            redirect_to('/superroot/?section=access');
+        }
+
         if ($action === 'toggle_integration') {
             $integrationId = (int) ($_POST['integration_id'] ?? 0);
             Superroot::toggleIntegration($integrationId, (string) ($_POST['status'] ?? 'inactive'));
@@ -82,6 +122,10 @@ $maintenance = Superroot::maintenanceInfo();
 $logLines = Superroot::recentLogLines(30);
 $config = app_config();
 $platformSettings = PlatformSettings::values();
+$contentSettings = PlatformSettings::contentSettings();
+$maintenanceSettings = PlatformSettings::maintenanceSettings();
+$emailSettings = PlatformSettings::emailVerificationSettings();
+$eulaSettings = PlatformSettings::eulaSettings();
 $editIntegrationId = (int) ($_GET['edit_integration'] ?? 0);
 $editingIntegration = null;
 foreach ($integrations as $integration) {
@@ -95,6 +139,8 @@ $sectionLabels = [
     'overview' => 'Resumen',
     'config' => 'Configuracion',
     'features' => 'Funciones',
+    'content' => 'Contenido',
+    'access' => 'Acceso legal',
     'integrations' => 'Integraciones',
     'users' => 'Usuarios',
     'maintenance' => 'Mantenimiento',
@@ -284,6 +330,168 @@ Page::header('Superroot');
     </section>
 <?php endif; ?>
 
+<?php if ($section === 'content'): ?>
+    <section class="panel">
+        <h2>Contenido editable</h2>
+        <p class="muted">Textos principales que Superroot puede cambiar sin editar archivos.</p>
+        <form class="form" method="post">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="save_content">
+            <div class="form-grid">
+                <div class="field">
+                    <label for="home_title">Titulo de inicio</label>
+                    <input id="home_title" name="home_title" value="<?= e($contentSettings['home_title']) ?>" maxlength="160">
+                </div>
+                <div class="field">
+                    <label for="footer_text">Footer</label>
+                    <input id="footer_text" name="footer_text" value="<?= e($contentSettings['footer_text']) ?>" maxlength="240">
+                </div>
+            </div>
+            <div class="field">
+                <label for="home_intro">Texto de inicio</label>
+                <textarea id="home_intro" name="home_intro" rows="4" maxlength="1000"><?= e($contentSettings['home_intro']) ?></textarea>
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label for="games_intro">Texto del catalogo</label>
+                    <textarea id="games_intro" name="games_intro" rows="4" maxlength="500"><?= e($contentSettings['games_intro']) ?></textarea>
+                </div>
+                <div class="field">
+                    <label for="library_intro">Texto de biblioteca</label>
+                    <textarea id="library_intro" name="library_intro" rows="4" maxlength="500"><?= e($contentSettings['library_intro']) ?></textarea>
+                </div>
+            </div>
+            <div class="actions">
+                <button type="submit">Guardar contenido</button>
+                <a class="button button--secondary" href="<?= e(url('/')) ?>">Ver inicio</a>
+                <a class="button button--secondary" href="<?= e(url('/games/')) ?>">Ver catalogo</a>
+            </div>
+        </form>
+    </section>
+<?php endif; ?>
+
+<?php if ($section === 'access'): ?>
+    <section class="panel">
+        <h2>Correo y EULA</h2>
+        <p class="muted">Controla verificacion de correo y el EULA vigente sin editar codigo.</p>
+        <form class="form" method="post">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="save_access_legal">
+
+            <h3>Verificacion por correo</h3>
+            <div class="form-grid">
+                <label class="checkbox-field">
+                    <input type="checkbox" name="email_verification_enabled" value="1" <?= $emailSettings['enabled'] ? 'checked' : '' ?>>
+                    Activar verificacion por correo
+                </label>
+                <label class="checkbox-field">
+                    <input type="checkbox" name="email_verification_required" value="1" <?= $emailSettings['required'] ? 'checked' : '' ?>>
+                    Requerir correo verificado para iniciar sesion
+                </label>
+                <div class="field">
+                    <label for="email_verification_delivery">Envio</label>
+                    <select id="email_verification_delivery" name="email_verification_delivery">
+                        <option value="log" <?= $emailSettings['delivery'] === 'log' ? 'selected' : '' ?>>Log local</option>
+                        <option value="smtp" <?= $emailSettings['delivery'] === 'smtp' ? 'selected' : '' ?>>SMTP con PHPMailer</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="email_verification_ttl_hours">Expira en horas</label>
+                    <input id="email_verification_ttl_hours" name="email_verification_ttl_hours" type="number" min="1" max="720" value="<?= e($emailSettings['ttl_hours']) ?>">
+                </div>
+                <div class="field">
+                    <label for="email_verification_from">Remitente</label>
+                    <input id="email_verification_from" name="email_verification_from" type="email" value="<?= e($emailSettings['from']) ?>">
+                </div>
+                <div class="field">
+                    <label for="email_verification_from_name">Nombre remitente</label>
+                    <input id="email_verification_from_name" name="email_verification_from_name" value="<?= e($emailSettings['from_name']) ?>" maxlength="120">
+                </div>
+                <div class="field">
+                    <label for="email_verification_subject">Asunto</label>
+                    <input id="email_verification_subject" name="email_verification_subject" value="<?= e($emailSettings['subject']) ?>" maxlength="180">
+                </div>
+            </div>
+            <p class="muted">En XAMPP puedes usar <code>Log local</code>. Para envio real usa SMTP con PHPMailer.</p>
+
+            <h3>SMTP PHPMailer</h3>
+            <div class="form-grid">
+                <div class="field">
+                    <label for="smtp_host">Host SMTP</label>
+                    <input id="smtp_host" name="smtp_host" value="<?= e($emailSettings['smtp']['host'] ?? '') ?>" placeholder="smtp.gmail.com">
+                </div>
+                <div class="field">
+                    <label for="smtp_port">Puerto</label>
+                    <input id="smtp_port" name="smtp_port" type="number" min="1" max="65535" value="<?= e($emailSettings['smtp']['port'] ?? 587) ?>">
+                </div>
+                <div class="field">
+                    <label for="smtp_encryption">Seguridad</label>
+                    <select id="smtp_encryption" name="smtp_encryption">
+                        <?php foreach (['tls' => 'STARTTLS', 'ssl' => 'SSL/TLS', 'none' => 'Sin cifrado'] as $value => $label): ?>
+                            <option value="<?= e($value) ?>" <?= (($emailSettings['smtp']['encryption'] ?? 'tls') === $value) ? 'selected' : '' ?>>
+                                <?= e($label) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="smtp_timeout">Timeout segundos</label>
+                    <input id="smtp_timeout" name="smtp_timeout" type="number" min="1" max="120" value="<?= e($emailSettings['smtp']['timeout'] ?? 15) ?>">
+                </div>
+                <label class="checkbox-field">
+                    <input type="checkbox" name="smtp_auth" value="1" <?= !empty($emailSettings['smtp']['auth']) ? 'checked' : '' ?>>
+                    Usar autenticacion SMTP
+                </label>
+                <div class="field">
+                    <label for="smtp_username">Usuario SMTP</label>
+                    <input id="smtp_username" name="smtp_username" value="<?= e($emailSettings['smtp']['username'] ?? '') ?>" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label for="smtp_password">Password SMTP</label>
+                    <input id="smtp_password" name="smtp_password" type="password" autocomplete="new-password" placeholder="<?= !empty($emailSettings['smtp']['password_configured']) ? 'Guardado - deja vacio para conservarlo' : '' ?>">
+                </div>
+            </div>
+
+            <h3>EULA</h3>
+            <div class="form-grid">
+                <label class="checkbox-field">
+                    <input type="checkbox" name="eula_enabled" value="1" <?= $eulaSettings['enabled'] ? 'checked' : '' ?>>
+                    Activar EULA publico
+                </label>
+                <label class="checkbox-field">
+                    <input type="checkbox" name="eula_required" value="1" <?= $eulaSettings['required'] ? 'checked' : '' ?>>
+                    Requerir aceptar EULA vigente
+                </label>
+                <div class="field">
+                    <label for="eula_version">Version</label>
+                    <input id="eula_version" name="eula_version" value="<?= e($eulaSettings['version']) ?>" maxlength="40">
+                </div>
+                <div class="field">
+                    <label for="eula_title">Titulo</label>
+                    <input id="eula_title" name="eula_title" value="<?= e($eulaSettings['title']) ?>" maxlength="180">
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="eula_body">Texto del EULA</label>
+                <textarea id="eula_body" name="eula_body" rows="14"><?= e($eulaSettings['body']) ?></textarea>
+            </div>
+
+            <div class="actions">
+                <button type="submit">Guardar acceso legal</button>
+                <a class="button button--secondary" href="<?= e(url('/eula/')) ?>">Ver EULA publico</a>
+                <a class="button button--secondary" href="<?= e(url('/verify-email/')) ?>">Verificar correo</a>
+            </div>
+        </form>
+
+        <form class="inline-form" method="post">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="send_email_test">
+            <button type="submit" class="button button--secondary">Enviar prueba SMTP a mi correo</button>
+        </form>
+    </section>
+<?php endif; ?>
+
 <?php if ($section === 'integrations'): ?>
     <section class="panel">
         <h2><?= $editingIntegration ? 'Editar integracion' : 'Nueva integracion' ?></h2>
@@ -453,6 +661,26 @@ Page::header('Superroot');
 <?php endif; ?>
 
 <?php if ($section === 'maintenance'): ?>
+    <section class="panel">
+        <h2>Modo mantenimiento</h2>
+        <p class="muted">Cuando esta activo, solo Admin, Superroot y Developer pueden navegar la plataforma.</p>
+        <form class="form" method="post">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="save_maintenance">
+            <label class="checkbox-field">
+                <input type="checkbox" name="maintenance_enabled" value="1" <?= $maintenanceSettings['enabled'] ? 'checked' : '' ?>>
+                Activar modo mantenimiento
+            </label>
+            <div class="field">
+                <label for="maintenance_message">Mensaje publico</label>
+                <textarea id="maintenance_message" name="maintenance_message" rows="4" maxlength="1000"><?= e($maintenanceSettings['message']) ?></textarea>
+            </div>
+            <div class="actions">
+                <button type="submit">Guardar mantenimiento</button>
+            </div>
+        </form>
+    </section>
+
     <section class="panel">
         <h2>Mantenimiento</h2>
         <dl class="meta">

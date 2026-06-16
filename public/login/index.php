@@ -5,6 +5,7 @@ require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR 
 
 use App\Core\Page;
 use App\Models\ExternalAuth;
+use App\Models\UserAgreement;
 use App\Security\Auth;
 use App\Security\Csrf;
 
@@ -23,6 +24,10 @@ function login_redirect_target(): string
 }
 
 if (Auth::check()) {
+    $currentUser = Auth::user();
+    if ($currentUser && UserAgreement::needsAcceptance((int) $currentUser['id'])) {
+        redirect_to('/eula/');
+    }
     redirect_to(login_redirect_target());
 }
 
@@ -39,7 +44,13 @@ if (request_is_post()) {
 
         try {
             if (Auth::attempt($identity, $password, $remember)) {
-                redirect_to(login_redirect_target());
+                $target = login_redirect_target();
+                $currentUser = Auth::user();
+                if ($currentUser && UserAgreement::needsAcceptance((int) $currentUser['id'])) {
+                    $_SESSION['after_eula_redirect'] = $target;
+                    redirect_to('/eula/');
+                }
+                redirect_to($target);
             }
             $error = 'Credenciales invalidas o cuenta bloqueada.';
         } catch (RuntimeException $exception) {
@@ -53,7 +64,14 @@ if (request_is_post()) {
 Page::header('Login');
 ?>
 <?php if ($error): ?>
-    <div class="alert alert--error"><?= e($error) ?></div>
+    <div class="alert alert--error">
+        <?= e($error) ?>
+        <?php if (str_contains($error, 'verificar tu correo')): ?>
+            <div class="actions">
+                <a class="button button--secondary" href="<?= e(url('/verify-email/')) ?>">Reenviar verificacion</a>
+            </div>
+        <?php endif; ?>
+    </div>
 <?php endif; ?>
 
 <section class="panel panel--narrow">

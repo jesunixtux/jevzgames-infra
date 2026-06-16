@@ -64,6 +64,8 @@ final class Page
                 <a href="<?= \e(\url('/install/')) ?>">Instalar</a>
             <?php elseif ($user): ?>
                 <a href="<?= \e(\url('/profile/')) ?>">Perfil</a>
+                <a href="<?= \e(\url('/library/')) ?>">Biblioteca</a>
+                <a href="<?= \e(\url('/achievements/')) ?>">Logros</a>
                 <a href="<?= \e(\url('/inventory/')) ?>">Inventario</a>
                 <a href="<?= \e(\url('/messages/')) ?>">Mensajes</a>
                 <a
@@ -102,10 +104,20 @@ final class Page
 
     public static function footer(): void
     {
+        $footerText = 'JevzGames Infraestructura modular en PHP puro.';
+        if (\is_installed()) {
+            try {
+                $footerText = PlatformSettings::contentSettings()['footer_text'] ?: $footerText;
+            } catch (\Throwable) {
+            }
+        }
         ?>
 </main>
 <footer class="site-footer">
-    <span>JevzGames Infraestructura modular en PHP puro.</span>
+    <span><?= \e($footerText) ?></span>
+    <?php if (\is_installed()): ?>
+        <span> &middot; <a href="<?= \e(\url('/eula/')) ?>">EULA</a></span>
+    <?php endif; ?>
 </footer>
 <script>
 (function () {

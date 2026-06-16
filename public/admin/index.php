@@ -7,6 +7,7 @@ use App\Core\Page;
 use App\Models\Achievement;
 use App\Models\Admin;
 use App\Models\CloudSave;
+use App\Models\Game;
 use App\Models\GameDatabase;
 use App\Models\GameBuild;
 use App\Models\PublishRequest;
@@ -195,6 +196,10 @@ $publishStatus = (string) ($_GET['publish_status'] ?? 'pending');
 $publishRequests = PublishRequest::all($publishStatus);
 $apiKeys = Admin::apiKeys();
 $achievements = Achievement::list();
+$achievementsByGameId = [];
+foreach ($achievements as $achievement) {
+    $achievementsByGameId[(int) $achievement['game_id']][] = $achievement;
+}
 $cloudConfigs = CloudSave::configs();
 $codes = Admin::codes();
 $workshopConfigs = Workshop::configs();
@@ -601,7 +606,7 @@ Page::header('Admin');
         <div class="section-heading">
             <div>
                 <h2>API keys de juegos</h2>
-                <p class="muted">Unity usa la public key para pedir un device code. La secret key se muestra solo al crearla.</p>
+                <p class="muted">La app compatible usa la public key para pedir un device code. La secret key se muestra solo al crearla.</p>
             </div>
         </div>
 
@@ -833,76 +838,89 @@ Page::header('Admin');
     </section>
 
     <section class="panel">
-        <h2>Logros configurados</h2>
-        <div class="table-wrap">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Logro</th>
-                        <th>Juego</th>
-                        <th>Meta</th>
-                        <th>Puntos</th>
-                        <th>Estado</th>
-                        <th>Desbloqueos</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($achievements === []): ?>
-                        <tr><td colspan="7">No hay logros configurados.</td></tr>
-                    <?php endif; ?>
-                    <?php foreach ($achievements as $achievement): ?>
-                        <tr>
-                            <td>
-                                <div class="compact-row">
-                                    <?php if (!empty($achievement['image_path'])): ?>
-                                        <img class="achievement-thumb" src="<?= e($achievement['image_path']) ?>" alt="">
-                                    <?php endif; ?>
-                                    <div>
-                                        <strong><?= e($achievement['title']) ?></strong><br>
-                                        <code><?= e($achievement['code']) ?></code>
-                                        <?php if (!empty($achievement['is_secret'])): ?>
-                                            <span class="muted">Secreto</span>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <?= e($achievement['game_name']) ?><br>
-                                <code><?= e($achievement['game_slug']) ?></code>
-                            </td>
-                            <td><?= e($achievement['goal_value']) ?></td>
-                            <td><?= e($achievement['points']) ?></td>
-                            <td><?= e($achievement['status']) ?></td>
-                            <td><?= e($achievement['unlocked_count'] ?? 0) ?> / <?= e($achievement['player_count'] ?? 0) ?></td>
-                            <td class="table-actions">
-                                <a class="button button--secondary" href="<?= e(url('/admin/?section=achievements&edit_achievement=' . (int) $achievement['id'])) ?>">Editar</a>
-                                <form method="post">
-                                    <?= Csrf::field() ?>
-                                    <input type="hidden" name="action" value="update_achievement_status">
-                                    <input type="hidden" name="achievement_id" value="<?= e($achievement['id']) ?>">
-                                    <select name="status">
-                                        <?php foreach (Achievement::statuses() as $achievementStatus): ?>
-                                            <option value="<?= e($achievementStatus) ?>" <?= $achievement['status'] === $achievementStatus ? 'selected' : '' ?>>
-                                                <?= e($achievementStatus) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <button type="submit" class="button button--secondary">Cambiar</button>
-                                </form>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+        <h2>Logros configurados por juego</h2>
+        <?php if ($achievements === []): ?>
+            <p class="muted">No hay logros configurados.</p>
+        <?php else: ?>
+            <p class="muted">Cada bloque muestra los logros asociados a un juego.</p>
+        <?php endif; ?>
     </section>
+
+    <?php foreach ($games as $game): ?>
+        <?php $gameAchievements = $achievementsByGameId[(int) $game['id']] ?? []; ?>
+        <?php if ($gameAchievements === []): ?>
+            <?php continue; ?>
+        <?php endif; ?>
+        <section class="panel">
+            <div class="section-heading">
+                <div>
+                    <h2><?= e($game['name']) ?></h2>
+                    <p class="muted"><code><?= e($game['slug']) ?></code> &middot; <?= e(Game::statusLabel((string) $game['status'])) ?></p>
+                </div>
+                <span class="status-pill"><?= e(count($gameAchievements)) ?> logros</span>
+            </div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Logro</th>
+                            <th>Meta</th>
+                            <th>Puntos</th>
+                            <th>Estado</th>
+                            <th>Desbloqueos</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($gameAchievements as $achievement): ?>
+                            <tr>
+                                <td>
+                                    <div class="compact-row">
+                                        <?php if (!empty($achievement['image_path'])): ?>
+                                            <img class="achievement-thumb" src="<?= e($achievement['image_path']) ?>" alt="">
+                                        <?php endif; ?>
+                                        <div>
+                                            <strong><?= e($achievement['title']) ?></strong><br>
+                                            <code><?= e($achievement['code']) ?></code>
+                                            <?php if (!empty($achievement['is_secret'])): ?>
+                                                <span class="muted">Secreto</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><?= e($achievement['goal_value']) ?></td>
+                                <td><?= e($achievement['points']) ?></td>
+                                <td><?= e($achievement['status']) ?></td>
+                                <td><?= e($achievement['unlocked_count'] ?? 0) ?> / <?= e($achievement['player_count'] ?? 0) ?></td>
+                                <td class="table-actions">
+                                    <a class="button button--secondary" href="<?= e(url('/admin/?section=achievements&edit_achievement=' . (int) $achievement['id'])) ?>">Editar</a>
+                                    <form method="post">
+                                        <?= Csrf::field() ?>
+                                        <input type="hidden" name="action" value="update_achievement_status">
+                                        <input type="hidden" name="achievement_id" value="<?= e($achievement['id']) ?>">
+                                        <select name="status">
+                                            <?php foreach (Achievement::statuses() as $achievementStatus): ?>
+                                                <option value="<?= e($achievementStatus) ?>" <?= $achievement['status'] === $achievementStatus ? 'selected' : '' ?>>
+                                                    <?= e($achievementStatus) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <button type="submit" class="button button--secondary">Cambiar</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    <?php endforeach; ?>
 <?php endif; ?>
 
 <?php if ($section === 'cloud'): ?>
     <section class="panel">
         <h2><?= $editingCloudConfig ? 'Editar cloud save' : 'Nueva config cloud' ?></h2>
-        <p class="muted">Cada juego puede tener una o varias keys de guardado. Unity usa <code>config_key</code> y <code>slot</code>.</p>
+        <p class="muted">Cada juego puede tener una o varias keys de guardado. Las integraciones usan <code>config_key</code> y <code>slot</code>.</p>
         <form class="form" method="post">
             <?= Csrf::field() ?>
             <input type="hidden" name="action" value="save_cloud_config">
@@ -1044,7 +1062,7 @@ Page::header('Admin');
                 </div>
                 <div class="field">
                     <label for="reward_type">Tipo de recompensa</label>
-                    <input id="reward_type" name="reward_type" value="item" maxlength="80" required>
+                    <input id="reward_type" name="reward_type" value="item" maxlength="80" placeholder="item, game, game_license" required>
                 </div>
                 <div class="field">
                     <label for="max_uses">Usos maximos</label>
@@ -1064,7 +1082,8 @@ Page::header('Admin');
             </div>
             <div class="field">
                 <label for="reward_json">Recompensa JSON</label>
-                <textarea id="reward_json" name="reward_json" rows="4" placeholder='{"item":"skin_blue"}'></textarea>
+                <textarea id="reward_json" name="reward_json" rows="5" placeholder='{"item":"skin_blue","image_path":"/uploads/items/skin_blue.png"}'></textarea>
+                <p class="muted">Para canjear juegos usa <code>reward_type=game</code> con <code>{"game_slug":"jumpfall"}</code> o asocia el codigo a un juego.</p>
             </div>
             <div class="actions">
                 <button type="submit">Crear codigo</button>

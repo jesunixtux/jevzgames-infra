@@ -5,6 +5,7 @@ namespace App\Security;
 
 use App\Core\Database;
 use App\Core\Page;
+use App\Models\PlatformSettings;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use RuntimeException;
@@ -82,6 +83,10 @@ final class Auth
 
         if (($user['status'] ?? '') !== 'active') {
             return false;
+        }
+
+        if (PlatformSettings::emailVerificationRequired() && !User::isEmailVerified($user)) {
+            throw new RuntimeException('Debes verificar tu correo antes de iniciar sesion.');
         }
 
         if (!password_verify($password, (string) $user['password_hash'])) {
@@ -202,7 +207,7 @@ final class Auth
             self::ensureRememberTable();
             Database::pdo()->prepare('DELETE FROM auth_remember_tokens WHERE expires_at < NOW()')->execute();
             $stmt = Database::pdo()->prepare(
-                'SELECT rt.*, u.status
+                'SELECT rt.*, u.status, u.email_verified_at
                  FROM auth_remember_tokens rt
                  INNER JOIN users u ON u.id = rt.user_id
                  WHERE rt.selector = :selector
@@ -226,6 +231,11 @@ final class Auth
         }
 
         if (($row['status'] ?? '') !== 'active') {
+            self::revokeRememberCookie();
+            return;
+        }
+
+        if (PlatformSettings::emailVerificationRequired() && empty($row['email_verified_at'])) {
             self::revokeRememberCookie();
             return;
         }

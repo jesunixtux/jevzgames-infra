@@ -37,7 +37,7 @@ Page::header('Canjear codigo');
 ?>
 <section class="panel panel--narrow">
     <h1>Canjear codigo</h1>
-    <p class="muted">Ingresa un codigo activo. Si entrega items, se agregan a tu inventario.</p>
+    <p class="muted">Ingresa un codigo activo. Puede entregar items, licencias de juegos o recompensas configuradas.</p>
     <form class="form" method="post">
         <?= Csrf::field() ?>
         <div class="field">

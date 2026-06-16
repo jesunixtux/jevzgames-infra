@@ -132,6 +132,8 @@ $linkedGames = $canSeeGames ? array_values(array_filter(Game::userLinks($targetI
     return in_array((string) $game['status'], Game::visibleStatuses(), true);
 })) : [];
 $unlockedAchievements = $canSeeAchievements ? Achievement::unlockedForUser($targetId) : [];
+$achievementPoints = array_sum(array_map(static fn (array $achievement): int => (int) $achievement['points'], $unlockedAchievements));
+$canSeeAchievementMeta = Auth::hasRole(['admin', 'superroot', 'developer']);
 $friends = $canSeeFriends ? Friend::friendsForUser($targetId) : [];
 
 Page::header('@' . (string) $profile['username']);
@@ -251,6 +253,11 @@ Page::header('@' . (string) $profile['username']);
                 <h2>Logros</h2>
                 <p class="muted">Desbloqueados.</p>
             </article>
+            <article class="tile metric-tile">
+                <span class="metric"><?= e($achievementPoints) ?></span>
+                <h2>Puntos</h2>
+                <p class="muted">Por logros desbloqueados.</p>
+            </article>
         <?php endif; ?>
         <?php if ($canSeeFriends): ?>
             <article class="tile metric-tile">
@@ -282,12 +289,19 @@ Page::header('@' . (string) $profile['username']);
                             <?php endif; ?>
                             <div>
                                 <h3><?= e($achievement['title']) ?></h3>
-                                <p class="muted"><?= e($achievement['game']['name'] ?? '') ?> · <code><?= e($achievement['code']) ?></code></p>
+                                <?php if (!empty($achievement['description'])): ?>
+                                    <p><?= e($achievement['description']) ?></p>
+                                <?php endif; ?>
+                                <?php if ($canSeeAchievementMeta): ?>
+                                    <p class="muted"><?= e($achievement['game']['name'] ?? '') ?> &middot; <code><?= e($achievement['code']) ?></code></p>
+                                <?php endif; ?>
                             </div>
-                            <div class="achievement-item__meta">
-                                <strong><?= e($achievement['points']) ?> pts</strong>
-                                <span class="muted"><?= e($achievement['unlocked_at'] ?? '') ?></span>
-                            </div>
+                            <?php if ($canSeeAchievementMeta): ?>
+                                <div class="achievement-item__meta">
+                                    <strong><?= e($achievement['points']) ?> pts</strong>
+                                    <span class="muted"><?= e($achievement['unlocked_at'] ?? '') ?></span>
+                                </div>
+                            <?php endif; ?>
                         </article>
                     <?php endforeach; ?>
                 </div>

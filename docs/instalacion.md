@@ -130,3 +130,43 @@ Si `installed.lock` existe, `public/install/index.php` no vuelve a ejecutar la i
 - Configuracion de sesiones.
 
 No se debe subir este archivo a repositorios publicos.
+
+## Correo local en XAMPP
+
+Para pruebas locales no necesitas SMTP. Entra como superroot en:
+
+```text
+http://jevzgames.local/superroot/?section=access
+```
+
+Activa `Verificacion por correo` y deja `Envio` en `Log local`. Al registrar un usuario, el enlace de verificacion queda en:
+
+```text
+storage/logs/app.log
+```
+
+Busca el evento `email_verification_link` y abre la URL `verify-email` en el navegador.
+
+## Correo real con PHPMailer
+
+La carpeta externa permitida para correo es:
+
+```text
+phpmailer/
+```
+
+Entra a:
+
+```text
+http://jevzgames.local/superroot/?section=access
+```
+
+Selecciona `SMTP con PHPMailer` y configura:
+
+- Host SMTP.
+- Puerto.
+- Seguridad: `STARTTLS`, `SSL/TLS` o sin cifrado.
+- Usuario y password SMTP.
+- Remitente y nombre del remitente.
+
+Guarda y luego usa `Enviar prueba SMTP a mi correo`. El password SMTP queda cifrado en `system_settings`.
