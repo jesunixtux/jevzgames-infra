@@ -1,0 +1,47 @@
+# JevzGames Account / RacaCount
+# Public crawler rules for https://racacount.jevzgames.com/
+
+User-agent: *
+Allow: /
+
+# Private account/session flows
+Disallow: /login/
+Disallow: /register/
+Disallow: /logout/
+Disallow: /forgot-password/
+Disallow: /reset-password/
+Disallow: /verify-email/
+Disallow: /oauth/
+Disallow: /auth/
+
+# User-only areas
+Disallow: /profile/
+Disallow: /library/
+Disallow: /achievements/
+Disallow: /inventory/
+Disallow: /friends/
+Disallow: /messages/
+Disallow: /notifications/
+Disallow: /support/
+Disallow: /redeem/
+
+# Internal/admin areas
+Disallow: /install/
+Disallow: /admin/
+Disallow: /supporter/
+Disallow: /superroot/
+Disallow: /tutorials/
+
+# API/runtime endpoints are for apps, not search engines
+Disallow: /api/
+
+# Avoid duplicate crawl paths from filters, auth redirects, and tracking params
+Disallow: /*?status=
+Disallow: /*?page=
+Disallow: /*?redirect=
+Disallow: /*?token=
+Disallow: /*?code=
+Disallow: /*?user_code=
+Disallow: /*?utm_
+
+Sitemap: https://racacount.jevzgames.com/sitemap.xml
