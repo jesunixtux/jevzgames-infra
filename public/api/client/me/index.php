@@ -7,7 +7,7 @@ use App\Models\ClientApp;
 
 require_installed();
 
-if (!request_is_post()) {
+if (!in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'POST'], true)) {
     api_response(false, 'Metodo no permitido.', [], 405);
 }
 
@@ -16,21 +16,13 @@ if ($token === null) {
     api_response(false, 'Bearer token requerido.', [], 401);
 }
 
-$input = json_input();
-
 try {
     $session = ClientApp::authenticate($token);
     if (!$session) {
         api_response(false, 'Token invalido o expirado.', [], 401);
     }
 
-    $status = (string) ($input['status'] ?? 'online');
-    $gameSlug = trim((string) ($input['game_slug'] ?? ''));
-    $gameId = (int) ($input['game_id'] ?? 0);
-
-    $presence = ClientApp::setPresence((int) $session['user_id'], $status, $gameSlug, $gameId);
-
-    api_response(true, 'OK', ['presence' => $presence]);
+    api_response(true, 'OK', ClientApp::me($session));
 } catch (Throwable $exception) {
     api_response(false, $exception->getMessage(), [], 400);
 }

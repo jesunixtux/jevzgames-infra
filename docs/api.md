@@ -324,6 +324,30 @@ Recupera una partida cloud.
 
 Devuelve la configuracion publica del cliente tipo Steam. Depende de Superroot > Funciones > Cliente.
 
+Incluye endpoints y politica local offline:
+
+```json
+{
+  "enabled": true,
+  "name": "JevzGames Client",
+  "endpoints": {
+    "login": "/api/client/login/",
+    "me": "/api/client/me/",
+    "library": "/api/client/library/",
+    "presence": "/api/client/presence/",
+    "messages_conversations": "/api/client/messages/conversations/"
+  },
+  "offline_cache": {
+    "schema_version": 1,
+    "local_files": {
+      "session": "session.json",
+      "library": "library-cache.json",
+      "installed_game": "games/<slug>/installed.json"
+    }
+  }
+}
+```
+
 ### POST `/api/client/login/`
 
 Login para un launcher propio. Si la cuenta esta suspendida responde `403` con el mensaje de suspension.
@@ -338,6 +362,38 @@ Login para un launcher propio. Si la cuenta esta suspendida responde `403` con e
 
 Devuelve `client_token`.
 
+El cliente puede guardar localmente el token, usuario basico y cache de biblioteca, pero nunca debe guardar la contrasena.
+
+### GET|POST `/api/client/me/`
+
+Header:
+
+```text
+Authorization: Bearer jvg_ct_...
+```
+
+Devuelve el usuario autenticado y su presencia actual:
+
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": 1,
+      "username": "admin",
+      "email": "admin@example.com",
+      "display_name": "admin",
+      "status": "active"
+    },
+    "presence": {
+      "status": "online",
+      "game_slug": null,
+      "game_name": null
+    }
+  }
+}
+```
+
 ### POST `/api/client/library/`
 
 Header:
@@ -348,13 +404,43 @@ Authorization: Bearer jvg_ct_...
 
 Devuelve:
 
-- `linked_games`: biblioteca vinculada del usuario.
-- `catalog`: catalogo visible.
+- `owned_games`: biblioteca real del launcher. Solo juegos vinculados o con licencia activa.
+- `linked_games`: alias antiguo para compatibilidad.
+- `catalog`: catalogo visible para explorar u obtener juegos.
+- `offline_cache`: reglas y nombres de archivos locales recomendados.
 
 Cada juego puede incluir `install_build` si Admin subio o registro un `.zip` instalable:
 
 ```json
 {
+  "owned_games": [
+    {
+      "id": 1,
+      "name": "JumpFall",
+      "slug": "jumpfall",
+      "status": "published",
+      "current_version": "0.1.0",
+      "has_license": true,
+      "is_linked": true,
+      "offline_allowed": true,
+      "offline_available": true,
+      "last_played_at": "2026-07-01 12:30:00",
+      "offline_entitlement": {
+        "available": true,
+        "reason": "ok",
+        "cache_version": 1,
+        "license_key_preview": "jvg_lic_abcd...123456"
+      },
+      "install_build": {
+        "version": "0.1.0",
+        "channel": "stable",
+        "download_url": "http://jevzgames.local/uploads/builds/jumpfall/jumpfall-0.1.0-stable.zip",
+        "checksum": "sha256...",
+        "size_bytes": 123456,
+        "executable_path": "JumpFall.exe"
+      }
+    }
+  ],
   "install_build": {
     "version": "0.1.0",
     "channel": "development",
@@ -365,6 +451,14 @@ Cada juego puede incluir `install_build` si Admin subio o registro un `.zip` ins
   }
 }
 ```
+
+Modo offline:
+
+- Permitido: ejecutar juegos ya instalados si existen en `owned_games` y `offline_available=true`.
+- No permitido: descargar juegos nuevos sin conexion.
+- No permitido: obtener licencias nuevas sin conexion.
+- Cache local recomendada: `session.json`, `library-cache.json`, `games/<slug>/installed.json`.
+- No guardar contrasenas localmente.
 
 ### POST `/api/client/obtain-game/`
 
@@ -424,6 +518,97 @@ Request para mostrar juego activo:
 ```
 
 Tambien acepta `game_id`. Para limpiar juego activo envia `{"status":"online"}` o revoca el token con logout.
+
+Acepta `online`, `in_game` y `offline`. Cuando se envia `in_game`, preferir `game_slug`. El juego debe estar vinculado o licenciado en la biblioteca del usuario. El backend actualiza `user_presence` y `user_games.last_played_at`.
+
+### GET|POST `/api/client/presence/status/`
+
+Consulta presencia con Bearer token. Sin body devuelve la presencia del usuario autenticado. Opcionalmente acepta `user_id` para consultar otro usuario.
+
+```json
+{
+  "success": true,
+  "data": {
+    "presence": {
+      "status": "in_game",
+      "connected": true,
+      "game_slug": "jumpfall",
+      "game_name": "JumpFall"
+    }
+  }
+}
+```
+
+### POST `/api/client/messages/conversations/`
+
+Lista conversaciones del usuario autenticado.
+
+```json
+{
+  "success": true,
+  "data": {
+    "conversations": [
+      {
+        "thread_id": 10,
+        "conversation_user": {
+          "id": 2,
+          "username": "player2",
+          "display_name": "Player 2"
+        },
+        "last_message": {
+          "id": 99,
+          "message": "Hola",
+          "message_html": "Hola",
+          "is_outgoing": false,
+          "created_at": "2026-07-01 12:00:00"
+        },
+        "unread_count": 1
+      }
+    ],
+    "unread_count": 1
+  }
+}
+```
+
+### POST `/api/client/messages/thread/`
+
+Body:
+
+```json
+{
+  "user_id": 2,
+  "limit": 50,
+  "after_id": 0,
+  "before_id": 0
+}
+```
+
+Devuelve mensajes con `message` y `message_html`. El cliente debe mostrar `message_html` o escapar `message`.
+
+### POST `/api/client/messages/send/`
+
+Body:
+
+```json
+{
+  "to_user_id": 2,
+  "message": "Hola"
+}
+```
+
+Valida Bearer token, destinatario activo, politicas sociales, longitud 1-2000 y usa prepared statements.
+
+### POST `/api/client/messages/mark-read/`
+
+Body:
+
+```json
+{
+  "conversation_user_id": 2
+}
+```
+
+Marca como leidos los mensajes recibidos en esa conversacion.
 
 ### POST `/api/client/logout/`
 

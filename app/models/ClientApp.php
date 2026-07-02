@@ -82,7 +82,12 @@ final class ClientApp
         }
         self::ensureTables();
         $stmt = Database::pdo()->prepare(
-            'SELECT cs.*, u.username, u.email, u.display_name, u.status
+            'SELECT cs.*,
+                    cs.status AS client_session_status,
+                    u.username,
+                    u.email,
+                    u.display_name,
+                    u.status AS user_status
              FROM client_sessions cs
              INNER JOIN users u ON u.id = cs.user_id
              WHERE cs.token_hash = :token_hash
@@ -92,11 +97,11 @@ final class ClientApp
         );
         $stmt->execute(['token_hash' => self::hashToken(trim($token))]);
         $session = $stmt->fetch();
-        if (!is_array($session) || $session['status'] !== 'active') {
+        if (!is_array($session) || ($session['client_session_status'] ?? '') !== 'active') {
             return null;
         }
 
-        if (($session['status'] ?? '') === 'blocked') {
+        if (($session['user_status'] ?? '') !== 'active') {
             return null;
         }
 
@@ -109,6 +114,16 @@ final class ClientApp
         return $session;
     }
 
+    public static function me(array $session): array
+    {
+        $userId = (int) $session['user_id'];
+
+        return [
+            'user' => self::sessionUserPayload($session),
+            'presence' => self::presencePayload(Presence::forUser($userId)),
+        ];
+    }
+
     public static function library(int $userId): array
     {
         self::ensureEnabled();
@@ -119,19 +134,33 @@ final class ClientApp
             array_map(static fn (array $game): int => (int) $game['id'], $catalog)
         );
         $builds = GameBuild::latestForGames($gameIds);
+        $generatedAt = date('c');
+        $ownedGames = array_map(
+            static fn (array $game): array => self::ownedGamePayload($userId, $game, $builds[(int) $game['game_id']] ?? null, $generatedAt),
+            $linkedGames
+        );
 
         return [
-            'linked_games' => array_map(static function (array $game) use ($builds): array {
+            'owned_games' => $ownedGames,
+            'linked_games' => array_map(static function (array $game) use ($builds, $userId, $generatedAt): array {
                 $gameId = (int) $game['game_id'];
                 $game['install_build'] = $builds[$gameId] ?? null;
                 $game['license'] = Game::licenseForUserGame((int) $game['user_id'], $gameId);
+                $normalized = self::ownedGamePayload($userId, $game, $game['install_build'], $generatedAt);
+                $game['has_license'] = $normalized['has_license'] ? 1 : 0;
+                $game['is_linked'] = $normalized['is_linked'] ? 1 : 0;
+                $game['offline_allowed'] = $normalized['offline_allowed'];
+                $game['offline_available'] = $normalized['offline_available'];
+                $game['offline_entitlement'] = $normalized['offline_entitlement'];
+                $game['last_played_at'] = $normalized['last_played_at'];
+                unset($game['config_json']);
                 return $game;
             }, $linkedGames),
             'catalog' => array_map(static function (array $game) use ($builds): array {
                 $gameId = (int) $game['id'];
-                $game['install_build'] = $builds[$gameId] ?? null;
-                return $game;
+                return self::catalogGamePayload($game, $builds[$gameId] ?? null);
             }, $catalog),
+            'offline_cache' => self::offlineCachePolicy($generatedAt),
         ];
     }
 
@@ -143,7 +172,7 @@ final class ClientApp
         }
 
         $stmt = Database::pdo()->prepare(
-            'SELECT id, name, slug, status, current_version
+            'SELECT id, name, slug, status, current_version, config_json
              FROM games
              WHERE id = :id
                AND status IN ("development", "playtest", "beta", "published")
@@ -172,11 +201,43 @@ final class ClientApp
                 'is_linked' => 1,
                 'has_license' => 1,
                 'install_build' => $build,
+                'offline_allowed' => self::offlineAllowed($game),
+                'offline_available' => self::offlineAllowed($game) && $build !== null,
+                'offline_entitlement' => self::offlineEntitlement($userId, [
+                    'game_id' => $gameId,
+                    'current_version' => $game['current_version'] ?? null,
+                    'license_id' => $license['id'] ?? null,
+                    'license_key_preview' => $license['license_key_preview'] ?? null,
+                    'licensed_at' => $license['granted_at'] ?? null,
+                ], self::offlineAllowed($game), self::offlineAllowed($game) && $build !== null, date('c')),
                 'license' => $license,
             ],
             'license' => $license,
             'install_build' => $build,
         ];
+    }
+
+    public static function setPresence(int $userId, string $status, string $gameSlug = '', int $gameId = 0): array
+    {
+        self::ensureEnabled();
+        $status = strtolower(trim($status));
+        $status = in_array($status, ['online', 'in_game', 'offline'], true) ? $status : 'online';
+        if ($status === 'in_game') {
+            $resolvedGameId = $gameSlug !== '' ? (Game::gameIdBySlug($gameSlug) ?? 0) : $gameId;
+            if ($resolvedGameId <= 0 || !self::userCanPlayGame($userId, $resolvedGameId)) {
+                throw new RuntimeException('El juego no esta en tu biblioteca.');
+            }
+        }
+
+        $presence = $gameSlug !== ''
+            ? Presence::setBySlug($userId, $status, $gameSlug, 'client')
+            : Presence::set($userId, $status, $gameId > 0 ? $gameId : null, 'client');
+
+        if (($presence['status'] ?? '') === 'in_game' && !empty($presence['game_id'])) {
+            Game::recordLastPlayed($userId, (int) $presence['game_id']);
+        }
+
+        return self::presencePayload($presence);
     }
 
     public static function revoke(string $token): void
@@ -218,6 +279,197 @@ final class ClientApp
             'display_name' => (string) ($user['display_name'] ?? $user['username']),
             'status' => (string) ($user['status'] ?? 'active'),
         ];
+    }
+
+    public static function sessionUserPayload(array $session): array
+    {
+        return [
+            'id' => (int) $session['user_id'],
+            'username' => (string) $session['username'],
+            'email' => (string) $session['email'],
+            'display_name' => (string) ($session['display_name'] ?? $session['username']),
+            'status' => (string) ($session['user_status'] ?? 'active'),
+        ];
+    }
+
+    public static function presencePayload(array $presence): array
+    {
+        return [
+            'status' => (string) ($presence['status'] ?? 'offline'),
+            'connected' => !empty($presence['connected']),
+            'game_id' => $presence['game_id'] ?? null,
+            'game_slug' => $presence['game_slug'] ?? null,
+            'game_name' => $presence['game_name'] ?? null,
+            'last_seen_at' => $presence['last_seen_at'] ?? null,
+            'source' => (string) ($presence['source'] ?? ''),
+        ];
+    }
+
+    private static function ownedGamePayload(int $userId, array $game, ?array $build, string $generatedAt): array
+    {
+        $gameId = (int) ($game['game_id'] ?? $game['id'] ?? 0);
+        $hasLicense = !empty($game['license_id']) || !empty($game['license']) || (int) ($game['has_license'] ?? 0) === 1;
+        $isLinked = !empty($game['linked_at']) || (int) ($game['is_linked'] ?? 0) === 1;
+        $offlineAllowed = self::offlineAllowed($game);
+        $offlineAvailable = $offlineAllowed && $hasLicense && $build !== null;
+
+        return [
+            'id' => $gameId,
+            'game_id' => $gameId,
+            'name' => (string) ($game['name'] ?? ''),
+            'slug' => (string) ($game['slug'] ?? ''),
+            'status' => (string) ($game['status'] ?? ''),
+            'current_version' => $game['current_version'] ?? null,
+            'has_license' => $hasLicense,
+            'is_linked' => $isLinked,
+            'install_build' => $build,
+            'offline_allowed' => $offlineAllowed,
+            'offline_available' => $offlineAvailable,
+            'offline_entitlement' => self::offlineEntitlement($userId, $game, $offlineAllowed, $offlineAvailable, $generatedAt),
+            'last_played_at' => $game['last_played_at'] ?? null,
+            'linked_at' => $game['linked_at'] ?? null,
+        ];
+    }
+
+    private static function catalogGamePayload(array $game, ?array $build): array
+    {
+        $hasLicense = (int) ($game['has_license'] ?? 0) === 1;
+        $isLinked = (int) ($game['is_linked'] ?? 0) === 1;
+
+        return [
+            'id' => (int) $game['id'],
+            'name' => (string) $game['name'],
+            'slug' => (string) $game['slug'],
+            'description' => $game['description'] ?? null,
+            'status' => (string) $game['status'],
+            'current_version' => $game['current_version'] ?? null,
+            'banner_path' => $game['banner_path'] ?? null,
+            'has_license' => $hasLicense,
+            'is_linked' => $isLinked,
+            'owned' => $hasLicense || $isLinked,
+            'install_build' => $build,
+            'offline_allowed' => self::offlineAllowed($game),
+            'build_count' => isset($game['build_count']) ? (int) $game['build_count'] : 0,
+            'latest_build_at' => $game['latest_build_at'] ?? null,
+        ];
+    }
+
+    private static function offlineEntitlement(int $userId, array $game, bool $offlineAllowed, bool $offlineAvailable, string $generatedAt): array
+    {
+        $licenseId = !empty($game['license_id']) ? (int) $game['license_id'] : null;
+        $gameId = (int) ($game['game_id'] ?? $game['id'] ?? 0);
+        $reason = 'ok';
+        if (!$offlineAllowed) {
+            $reason = 'offline_disabled_for_game';
+        } elseif ($licenseId === null) {
+            $reason = 'no_active_license';
+        } elseif (!$offlineAvailable) {
+            $reason = 'no_installable_build';
+        }
+
+        return [
+            'available' => $offlineAvailable,
+            'reason' => $reason,
+            'cache_version' => 1,
+            'user_id' => $userId,
+            'game_id' => $gameId,
+            'license_id' => $licenseId,
+            'license_key_preview' => $game['license_key_preview'] ?? null,
+            'licensed_at' => $game['licensed_at'] ?? null,
+            'generated_at' => $generatedAt,
+            'cache_key' => hash('sha256', implode('|', [
+                $userId,
+                $gameId,
+                $licenseId ?? 0,
+                (string) ($game['licensed_at'] ?? ''),
+                (string) ($game['current_version'] ?? ''),
+            ])),
+        ];
+    }
+
+    private static function offlineCachePolicy(string $generatedAt): array
+    {
+        return [
+            'schema_version' => 1,
+            'generated_at' => $generatedAt,
+            'local_files' => [
+                'session' => 'session.json',
+                'library' => 'library-cache.json',
+                'installed_game' => 'games/<slug>/installed.json',
+            ],
+            'rules' => [
+                'store_passwords' => false,
+                'store_token' => true,
+                'launch_installed_owned_games_offline' => true,
+                'download_new_games_offline' => false,
+                'obtain_new_licenses_offline' => false,
+                'offline_requires_prior_license' => true,
+            ],
+        ];
+    }
+
+    private static function offlineAllowed(array $game): bool
+    {
+        $config = Game::decodeJson(isset($game['config_json']) ? (string) $game['config_json'] : null);
+        $value = self::configValue($config, ['client.offline_allowed', 'offline_allowed', 'drm.offline_allowed']);
+        if ($value === null) {
+            return true;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    private static function configValue(array $config, array $paths): mixed
+    {
+        foreach ($paths as $path) {
+            $cursor = $config;
+            foreach (explode('.', $path) as $part) {
+                if (!is_array($cursor) || !array_key_exists($part, $cursor)) {
+                    $cursor = null;
+                    break;
+                }
+                $cursor = $cursor[$part];
+            }
+            if ($cursor !== null) {
+                return $cursor;
+            }
+        }
+
+        return null;
+    }
+
+    private static function userCanPlayGame(int $userId, int $gameId): bool
+    {
+        if ($userId <= 0 || $gameId <= 0) {
+            return false;
+        }
+
+        Game::ensureLicenseTables();
+        Game::ensureUserGameMetadataColumns();
+        $stmt = Database::pdo()->prepare(
+            'SELECT COUNT(*)
+             FROM games g
+             LEFT JOIN user_games ug ON ug.game_id = g.id AND ug.user_id = :linked_user_id
+             LEFT JOIN user_game_licenses ugl ON ugl.game_id = g.id AND ugl.user_id = :licensed_user_id AND ugl.status = "active"
+             WHERE g.id = :game_id
+               AND g.status IN ("development", "playtest", "beta", "published")
+               AND (ug.user_id IS NOT NULL OR ugl.id IS NOT NULL)'
+        );
+        $stmt->execute([
+            'linked_user_id' => $userId,
+            'licensed_user_id' => $userId,
+            'game_id' => $gameId,
+        ]);
+
+        return (int) $stmt->fetchColumn() > 0;
     }
 
     private static function hashToken(string $token): string

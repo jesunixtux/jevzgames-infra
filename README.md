@@ -446,15 +446,53 @@ Flujo minimo para montar un launcher:
 3. Envia `POST /api/client/login/` con `identity`, `password` y `client_name`.
 4. Guarda `client_token` localmente.
 5. Usa `Authorization: Bearer jvg_ct_...` para:
+   - `GET|POST /api/client/me/`
    - `POST /api/client/library/`
    - `POST /api/client/obtain-game/`
    - `POST /api/client/inventory/`
    - `POST /api/client/redeem/`
    - `POST /api/client/presence/`
-6. Usa `POST /api/client/presence/` para marcar `online` o `in_game` con `game_slug`.
+   - `GET|POST /api/client/presence/status/`
+   - `POST /api/client/messages/conversations/`
+   - `POST /api/client/messages/thread/`
+   - `POST /api/client/messages/send/`
+   - `POST /api/client/messages/mark-read/`
+6. Usa `POST /api/client/presence/` para marcar `online` o `in_game` con `game_slug`; el juego debe estar en la biblioteca del usuario.
 7. Usa `POST /api/client/logout/` para revocar el token.
 
 Si una cuenta esta suspendida, el login web muestra un popup y el cliente recibe error `403`.
+
+### Biblioteca online y offline
+
+`POST /api/client/library/` devuelve dos listas separadas:
+
+- `owned_games`: juegos vinculados o con licencia activa del usuario. Esta es la biblioteca que debe mostrar el launcher.
+- `catalog`: catalogo publico visible. Sirve para explorar u obtener juegos, no para modo offline.
+
+El campo antiguo `linked_games` sigue existiendo para compatibilidad, pero el launcher nuevo debe preferir `owned_games`.
+
+Cada item de `owned_games` incluye `install_build`, `has_license`, `is_linked`, `offline_allowed`, `offline_available` y `last_played_at`. El modo offline solo debe permitir ejecutar juegos ya instalados cuando `offline_available=true`; no debe descargar builds nuevas ni crear licencias nuevas sin conexion.
+
+Estructura local recomendada para el launcher:
+
+```text
+session.json
+library-cache.json
+games/<slug>/installed.json
+```
+
+`session.json` debe guardar el token Bearer y usuario basico, nunca la contrasena. `library-cache.json` debe ser una copia de `owned_games` y `offline_cache`. `installed.json` debe guardar version instalada, ruta local, checksum y ejecutable.
+
+### Mensajes en cliente
+
+El cliente puede implementar chat por polling cada 5 o 10 segundos con:
+
+- `POST /api/client/messages/conversations/`
+- `POST /api/client/messages/thread/`
+- `POST /api/client/messages/send/`
+- `POST /api/client/messages/mark-read/`
+
+No usa WebSocket todavia. Todos los endpoints requieren Bearer token y reutilizan las mismas conversaciones del panel web.
 
 ### Cliente CEF local
 
@@ -481,9 +519,20 @@ Para que un juego se instale tipo Steam:
 6. Si el juego esta en catalogo y tiene build, el cliente llama `/api/client/obtain-game/` para crear licencia y agregarlo a biblioteca.
 7. El cliente compara la version instalada local con la ultima build y muestra Instalar, Reinstalar o Actualizar.
 8. El cliente descarga, verifica checksum, extrae en `%AppData%\JevzGamesClient\games\<slug>` y ejecuta el `.exe`.
-9. Al ejecutar un juego, el cliente puede enviar `POST /api/client/presence/` con `{"status":"in_game","game_slug":"slug"}` y volver a `online` al cerrar.
+9. Al ejecutar un juego de la biblioteca, el cliente puede enviar `POST /api/client/presence/` con `{"status":"in_game","game_slug":"slug"}` y volver a `online` al cerrar.
 
 La primera compilacion del cliente descarga CefSharp/CEF desde NuGet y puede tardar bastante porque CEF es pesado.
+
+### Update 1.0
+
+Para actualizar una infraestructura ya montada sin reinstalar, copia los archivos nuevos conservando `app/config/config.php`, `storage/`, `public/uploads/` y `phpmailer/`, y ejecuta:
+
+```bat
+cd C:\xampp\jevzgames-infra
+C:\xampp\php\php.exe update\1.0\update.php
+```
+
+El script crea tablas faltantes y agrega columnas necesarias como `user_games.last_played_at`.
 
 ## Apache
 
