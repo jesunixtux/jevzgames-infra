@@ -1,9 +1,10 @@
 <?php
 declare(strict_types=1);
 
-require dirname(__DIR__, 4) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bootstrap.php';
+require dirname(__DIR__, 5) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bootstrap.php';
 
 use App\Models\ClientApp;
+use App\Models\DirectMessage;
 
 require_installed();
 
@@ -16,21 +17,16 @@ if ($token === null) {
     api_response(false, 'Bearer token requerido.', [], 401);
 }
 
-$input = json_input();
-
 try {
     $session = ClientApp::authenticate($token);
     if (!$session) {
         api_response(false, 'Token invalido o expirado.', [], 401);
     }
 
-    $status = (string) ($input['status'] ?? 'online');
-    $gameSlug = trim((string) ($input['game_slug'] ?? ''));
-    $gameId = (int) ($input['game_id'] ?? 0);
-
-    $presence = ClientApp::setPresence((int) $session['user_id'], $status, $gameSlug, $gameId);
-
-    api_response(true, 'OK', ['presence' => $presence]);
+    api_response(true, 'OK', [
+        'conversations' => DirectMessage::clientConversations((int) $session['user_id']),
+        'unread_count' => DirectMessage::unreadCount((int) $session['user_id']),
+    ]);
 } catch (Throwable $exception) {
     api_response(false, $exception->getMessage(), [], 400);
 }

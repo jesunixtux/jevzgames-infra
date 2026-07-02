@@ -434,12 +434,35 @@ final class PlatformSettings
             'config' => is_array($values['client.config_json']) ? $values['client.config_json'] : [],
             'endpoints' => [
                 'login' => \url('/api/client/login/'),
+                'me' => \url('/api/client/me/'),
                 'library' => \url('/api/client/library/'),
                 'obtain_game' => \url('/api/client/obtain-game/'),
                 'redeem' => \url('/api/client/redeem/'),
                 'inventory' => \url('/api/client/inventory/'),
                 'license_check' => \url('/api/game-license/check/'),
                 'presence' => \url('/api/client/presence/'),
+                'presence_status' => \url('/api/client/presence/status/'),
+                'messages_conversations' => \url('/api/client/messages/conversations/'),
+                'messages_thread' => \url('/api/client/messages/thread/'),
+                'messages_send' => \url('/api/client/messages/send/'),
+                'messages_mark_read' => \url('/api/client/messages/mark-read/'),
+                'logout' => \url('/api/client/logout/'),
+            ],
+            'offline_cache' => [
+                'schema_version' => 1,
+                'local_files' => [
+                    'session' => 'session.json',
+                    'library' => 'library-cache.json',
+                    'installed_game' => 'games/<slug>/installed.json',
+                ],
+                'rules' => [
+                    'store_passwords' => false,
+                    'store_token' => true,
+                    'launch_installed_owned_games_offline' => true,
+                    'download_new_games_offline' => false,
+                    'obtain_new_licenses_offline' => false,
+                    'offline_requires_prior_license' => true,
+                ],
             ],
         ];
     }

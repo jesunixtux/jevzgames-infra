@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS user_games (
     game_id INT UNSIGNED NOT NULL,
     external_player_id VARCHAR(190) NULL,
     linked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_played_at DATETIME NULL,
     extra_json LONGTEXT NULL,
     UNIQUE KEY uq_user_games_user_game (user_id, game_id),
     INDEX idx_user_games_game (game_id),

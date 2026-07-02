@@ -123,6 +123,11 @@ final class Game
         self::grantLicense($userId, $gameId, 'manual');
     }
 
+    public static function ensureUserGameMetadataColumns(): void
+    {
+        self::addColumnIfMissing('user_games', 'last_played_at', 'DATETIME NULL AFTER linked_at');
+    }
+
     public static function grantLicense(int $userId, int $gameId, string $source = 'manual'): array
     {
         if ($userId <= 0 || $gameId <= 0) {
@@ -200,6 +205,7 @@ final class Game
 
     private static function upsertUserLink(int $userId, int $gameId): void
     {
+        self::ensureUserGameMetadataColumns();
         $stmt = Database::pdo()->prepare(
             'INSERT INTO user_games (user_id, game_id, linked_at)
              VALUES (:user_id, :game_id, NOW())
@@ -227,8 +233,9 @@ final class Game
     public static function userLinks(int $userId): array
     {
         self::ensureLicenseTables();
+        self::ensureUserGameMetadataColumns();
         $stmt = Database::pdo()->prepare(
-            'SELECT ug.*, g.name, g.slug, g.status, g.current_version,
+            'SELECT ug.*, g.name, g.slug, g.status, g.current_version, g.config_json,
                     l.id AS license_id, l.source AS license_source, l.license_key_preview, l.status AS license_status, l.granted_at AS licensed_at
              FROM user_games ug
              INNER JOIN games g ON g.id = ug.game_id
@@ -239,6 +246,24 @@ final class Game
         $stmt->execute(['user_id' => $userId]);
 
         return $stmt->fetchAll();
+    }
+
+    public static function recordLastPlayed(int $userId, int $gameId): void
+    {
+        if ($userId <= 0 || $gameId <= 0) {
+            return;
+        }
+
+        self::ensureUserGameMetadataColumns();
+        $stmt = Database::pdo()->prepare(
+            'UPDATE user_games
+             SET last_played_at = NOW()
+             WHERE user_id = :user_id AND game_id = :game_id'
+        );
+        $stmt->execute([
+            'user_id' => $userId,
+            'game_id' => $gameId,
+        ]);
     }
 
     public static function statusLabel(string $status): string
@@ -304,6 +329,24 @@ final class Game
         $stmt->execute(['table_name' => $table]);
 
         return (int) $stmt->fetchColumn() > 0;
+    }
+
+    private static function addColumnIfMissing(string $table, string $column, string $definition): void
+    {
+        $stmt = Database::pdo()->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = :table_name
+               AND column_name = :column_name'
+        );
+        $stmt->execute([
+            'table_name' => $table,
+            'column_name' => $column,
+        ]);
+        if ((int) $stmt->fetchColumn() === 0) {
+            Database::pdo()->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition);
+        }
     }
 
     private static function cleanLicenseSource(string $source): string

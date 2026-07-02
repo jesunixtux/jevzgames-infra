@@ -55,7 +55,11 @@ final class DirectMessage
                     COALESCE(pp.display_name, other_user.display_name, other_user.username) AS other_display_name,
                     pp.avatar_path AS other_avatar_path,
                     last_message.message AS last_message,
+                    last_message.id AS last_message_id,
                     last_message.sender_user_id AS last_sender_user_id,
+                    last_message.recipient_user_id AS last_recipient_user_id,
+                    last_message.read_at AS last_read_at,
+                    last_message.created_at AS last_message_created_at,
                     unread.unread_count
              FROM direct_message_threads t
              INNER JOIN users other_user ON other_user.id = CASE WHEN t.user_a_id = :user_case THEN t.user_b_id ELSE t.user_a_id END
@@ -86,6 +90,14 @@ final class DirectMessage
         ]);
 
         return $stmt->fetchAll();
+    }
+
+    public static function clientConversations(int $userId): array
+    {
+        return array_map(
+            static fn (array $row): array => self::clientConversationPayload($row, $userId),
+            self::inbox($userId)
+        );
     }
 
     public static function findThreadForUser(int $threadId, int $userId): ?array
@@ -147,6 +159,93 @@ final class DirectMessage
         }
 
         return $thread;
+    }
+
+    public static function findThreadBetween(int $userId, int $otherUserId): ?array
+    {
+        self::ensureTables();
+        [$userA, $userB] = self::pair($userId, $otherUserId);
+        $stmt = Database::pdo()->prepare(
+            'SELECT *
+             FROM direct_message_threads
+             WHERE user_a_id = :user_a AND user_b_id = :user_b
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'user_a' => $userA,
+            'user_b' => $userB,
+        ]);
+        $thread = $stmt->fetch();
+
+        return is_array($thread) ? $thread : null;
+    }
+
+    public static function clientThread(int $userId, int $otherUserId, int $limit = 50, int $beforeId = 0, int $afterId = 0): array
+    {
+        self::ensureTables();
+        $otherUser = self::clientUserById($otherUserId);
+        if (!$otherUser) {
+            throw new RuntimeException('Usuario no encontrado.');
+        }
+
+        $thread = self::threadBetween($userId, $otherUserId);
+        self::markThreadRead((int) $thread['id'], $userId);
+        Notification::markUrlRead($userId, '/messages/?thread=' . (int) $thread['id']);
+
+        $limit = max(1, min(100, $limit));
+        $where = ['m.thread_id = :thread_id'];
+        $params = ['thread_id' => (int) $thread['id']];
+        $order = 'DESC';
+        $reverseRows = true;
+
+        if ($afterId > 0) {
+            $where[] = 'm.id > :after_id';
+            $params['after_id'] = $afterId;
+            $order = 'ASC';
+            $reverseRows = false;
+        } elseif ($beforeId > 0) {
+            $where[] = 'm.id < :before_id';
+            $params['before_id'] = $beforeId;
+        }
+
+        $stmt = Database::pdo()->prepare(
+            'SELECT m.*, u.username AS sender_username, COALESCE(pp.display_name, u.display_name, u.username) AS sender_display_name
+             FROM direct_messages m
+             INNER JOIN users u ON u.id = m.sender_user_id
+             LEFT JOIN public_profiles pp ON pp.user_id = u.id
+             WHERE ' . implode(' AND ', $where) . '
+             ORDER BY m.id ' . $order . '
+             LIMIT :limit'
+        );
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value, \PDO::PARAM_INT);
+        }
+        $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+        if ($reverseRows) {
+            $rows = array_reverse($rows);
+        }
+
+        return [
+            'thread' => [
+                'id' => (int) $thread['id'],
+                'conversation_user_id' => $otherUserId,
+                'created_at' => $thread['created_at'] ?? null,
+                'updated_at' => $thread['updated_at'] ?? null,
+            ],
+            'conversation_user' => self::clientUserPayload($otherUser),
+            'messages' => array_map(
+                static fn (array $row): array => self::clientMessagePayload($row, $userId),
+                $rows
+            ),
+            'pagination' => [
+                'limit' => $limit,
+                'before_id' => $beforeId > 0 ? $beforeId : null,
+                'after_id' => $afterId > 0 ? $afterId : null,
+                'count' => count($rows),
+            ],
+        ];
     }
 
     public static function messages(int $threadId, int $userId, bool $markRead = true): array
@@ -228,6 +327,36 @@ final class DirectMessage
         return (int) $thread['id'];
     }
 
+    public static function clientSend(int $senderUserId, int $recipientUserId, string $message): array
+    {
+        $message = trim($message);
+        if ($message === '' || strlen($message) > 2000) {
+            throw new RuntimeException('El mensaje debe tener entre 1 y 2000 caracteres.');
+        }
+
+        $threadId = self::send($senderUserId, $recipientUserId, $message);
+        $stmt = Database::pdo()->prepare(
+            'SELECT m.*, u.username AS sender_username, COALESCE(pp.display_name, u.display_name, u.username) AS sender_display_name
+             FROM direct_messages m
+             INNER JOIN users u ON u.id = m.sender_user_id
+             LEFT JOIN public_profiles pp ON pp.user_id = u.id
+             WHERE m.thread_id = :thread_id
+               AND m.sender_user_id = :sender_user_id
+             ORDER BY m.id DESC
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'thread_id' => $threadId,
+            'sender_user_id' => $senderUserId,
+        ]);
+        $row = $stmt->fetch();
+
+        return [
+            'thread_id' => $threadId,
+            'message' => is_array($row) ? self::clientMessagePayload($row, $senderUserId) : null,
+        ];
+    }
+
     public static function userByUsername(string $username): ?array
     {
         $username = ltrim(trim($username), '@');
@@ -301,6 +430,21 @@ final class DirectMessage
         ]);
     }
 
+    public static function clientMarkRead(int $userId, int $otherUserId): array
+    {
+        $thread = self::findThreadBetween($userId, $otherUserId);
+        if ($thread) {
+            self::markThreadRead((int) $thread['id'], $userId);
+            Notification::markUrlRead($userId, '/messages/?thread=' . (int) $thread['id']);
+        }
+
+        return [
+            'conversation_user_id' => $otherUserId,
+            'thread_id' => $thread ? (int) $thread['id'] : null,
+            'unread_count' => self::unreadCount($userId),
+        ];
+    }
+
     public static function markAllRead(int $userId): void
     {
         self::ensureTables();
@@ -322,5 +466,95 @@ final class DirectMessage
         return $userId < $otherUserId
             ? [$userId, $otherUserId]
             : [$otherUserId, $userId];
+    }
+
+    private static function clientConversationPayload(array $row, int $userId): array
+    {
+        $otherUserId = (int) $row['other_user_id'];
+        $lastMessage = null;
+        if (!empty($row['last_message_id'])) {
+            $lastMessage = [
+                'id' => (int) $row['last_message_id'],
+                'sender_user_id' => (int) $row['last_sender_user_id'],
+                'recipient_user_id' => (int) $row['last_recipient_user_id'],
+                'message' => (string) ($row['last_message'] ?? ''),
+                'message_html' => self::messageHtml((string) ($row['last_message'] ?? '')),
+                'is_outgoing' => (int) $row['last_sender_user_id'] === $userId,
+                'is_read' => !empty($row['last_read_at']) || (int) $row['last_sender_user_id'] === $userId,
+                'created_at' => $row['last_message_created_at'] ?? null,
+                'read_at' => $row['last_read_at'] ?? null,
+            ];
+        }
+
+        return [
+            'thread_id' => (int) $row['id'],
+            'conversation_user' => [
+                'id' => $otherUserId,
+                'username' => (string) $row['other_username'],
+                'display_name' => (string) $row['other_display_name'],
+                'avatar_path' => $row['other_avatar_path'] ?? null,
+                'presence' => ClientApp::presencePayload(Presence::forUser($otherUserId)),
+            ],
+            'last_message' => $lastMessage,
+            'unread_count' => (int) ($row['unread_count'] ?? 0),
+            'last_message_at' => $row['last_message_created_at'] ?? $row['last_message_at'] ?? null,
+            'updated_at' => $row['updated_at'] ?? null,
+        ];
+    }
+
+    private static function clientMessagePayload(array $row, int $viewerUserId): array
+    {
+        $message = (string) ($row['message'] ?? '');
+
+        return [
+            'id' => (int) $row['id'],
+            'thread_id' => (int) $row['thread_id'],
+            'sender_user_id' => (int) $row['sender_user_id'],
+            'recipient_user_id' => (int) $row['recipient_user_id'],
+            'sender_username' => (string) ($row['sender_username'] ?? ''),
+            'sender_display_name' => (string) ($row['sender_display_name'] ?? $row['sender_username'] ?? ''),
+            'message' => $message,
+            'message_html' => self::messageHtml($message),
+            'is_outgoing' => (int) $row['sender_user_id'] === $viewerUserId,
+            'is_read' => !empty($row['read_at']) || (int) $row['sender_user_id'] === $viewerUserId,
+            'created_at' => $row['created_at'] ?? null,
+            'read_at' => $row['read_at'] ?? null,
+        ];
+    }
+
+    private static function clientUserById(int $userId): ?array
+    {
+        if ($userId <= 0) {
+            return null;
+        }
+
+        $stmt = Database::pdo()->prepare(
+            'SELECT u.id, u.username, u.display_name, u.status, pp.avatar_path
+             FROM users u
+             LEFT JOIN public_profiles pp ON pp.user_id = u.id
+             WHERE u.id = :id
+               AND u.status = "active"
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $userId]);
+        $user = $stmt->fetch();
+
+        return is_array($user) ? $user : null;
+    }
+
+    private static function clientUserPayload(array $user): array
+    {
+        return [
+            'id' => (int) $user['id'],
+            'username' => (string) $user['username'],
+            'display_name' => (string) ($user['display_name'] ?? $user['username']),
+            'avatar_path' => $user['avatar_path'] ?? null,
+            'presence' => ClientApp::presencePayload(Presence::forUser((int) $user['id'])),
+        ];
+    }
+
+    private static function messageHtml(string $message): string
+    {
+        return nl2br(\htmlspecialchars($message, ENT_QUOTES, 'UTF-8'), false);
     }
 }
