@@ -9,6 +9,7 @@ use RuntimeException;
 final class Game
 {
     private const VISIBLE_STATUSES = ['development', 'playtest', 'beta', 'published'];
+    private const VISIBILITY_OPTIONS = ['public', 'unlisted', 'private'];
 
     public static function ensureLicenseTables(): void
     {
@@ -34,8 +35,14 @@ final class Game
         );
     }
 
-    public static function publicGames(?int $userId = null, string $status = 'all'): array
+    public static function ensureVisibilityColumn(): void
     {
+        self::addColumnIfMissing('games', 'visibility', 'ENUM("public", "unlisted", "private") NOT NULL DEFAULT "public" AFTER status');
+    }
+
+    public static function publicGames(?int $userId = null, string $status = 'all', bool $includeUnlisted = false, bool $canViewPrivate = false): array
+    {
+        self::ensureVisibilityColumn();
         $params = [];
         $where = ['g.status IN ("development", "playtest", "beta", "published")'];
 
@@ -43,6 +50,17 @@ final class Game
             $where[] = 'g.status = :status';
             $params['status'] = $status;
         }
+
+        $visibilityWhere = [];
+        $visibilityWhere[] = $includeUnlisted ? 'g.visibility IN ("public", "unlisted")' : 'g.visibility = "public"';
+        if ($userId !== null) {
+            $visibilityWhere[] = '(g.visibility = "private" AND g.owner_user_id = :visibility_owner_user_id)';
+            $params['visibility_owner_user_id'] = $userId;
+        }
+        if ($canViewPrivate) {
+            $visibilityWhere[] = 'g.visibility = "private"';
+        }
+        $where[] = '(' . implode(' OR ', $visibilityWhere) . ')';
 
         $linkedSelect = '0 AS is_linked, 0 AS has_license';
         $linkedJoin = '';
@@ -56,7 +74,7 @@ final class Game
             $params['licensed_user_id'] = $userId;
         }
 
-        $sql = 'SELECT g.id, g.name, g.slug, g.description, g.status, g.current_version, g.banner_path,
+        $sql = 'SELECT g.id, g.owner_user_id, g.name, g.slug, g.description, g.status, g.visibility, g.current_version, g.banner_path,
                        g.config_json, g.endpoints_json, g.external_database_json, g.cdn_json, g.created_at, g.updated_at,
                        ' . $linkedSelect . ',
                        builds.latest_build_at,
@@ -77,14 +95,23 @@ final class Game
         return $stmt->fetchAll();
     }
 
-    public static function findPublicBySlug(string $slug, ?int $userId = null): ?array
+    public static function findPublicBySlug(string $slug, ?int $userId = null, bool $canViewPrivate = false): ?array
     {
+        self::ensureVisibilityColumn();
         $slug = strtolower(trim($slug));
         if ($slug === '') {
             return null;
         }
 
         $params = ['slug' => $slug];
+        $visibilityWhere = ['g.visibility IN ("public", "unlisted")'];
+        if ($userId !== null) {
+            $visibilityWhere[] = '(g.visibility = "private" AND g.owner_user_id = :visibility_owner_user_id)';
+            $params['visibility_owner_user_id'] = $userId;
+        }
+        if ($canViewPrivate) {
+            $visibilityWhere[] = 'g.visibility = "private"';
+        }
         $linkedSelect = '0 AS is_linked, 0 AS has_license';
         $linkedJoin = '';
         if ($userId !== null) {
@@ -110,6 +137,7 @@ final class Game
              ) builds ON builds.game_id = g.id
              WHERE g.slug = :slug
                AND g.status IN ("development", "playtest", "beta", "published")
+               AND (' . implode(' OR ', $visibilityWhere) . ')
              LIMIT 1'
         );
         $stmt->execute($params);
@@ -232,10 +260,11 @@ final class Game
 
     public static function userLinks(int $userId): array
     {
+        self::ensureVisibilityColumn();
         self::ensureLicenseTables();
         self::ensureUserGameMetadataColumns();
         $stmt = Database::pdo()->prepare(
-            'SELECT ug.*, g.name, g.slug, g.status, g.current_version, g.config_json,
+            'SELECT ug.*, g.owner_user_id, g.name, g.slug, g.status, g.visibility, g.current_version, g.config_json,
                     l.id AS license_id, l.source AS license_source, l.license_key_preview, l.status AS license_status, l.granted_at AS licensed_at
              FROM user_games ug
              INNER JOIN games g ON g.id = ug.game_id
@@ -281,6 +310,21 @@ final class Game
     public static function visibleStatuses(): array
     {
         return self::VISIBLE_STATUSES;
+    }
+
+    public static function visibilityOptions(): array
+    {
+        return self::VISIBILITY_OPTIONS;
+    }
+
+    public static function visibilityLabel(string $visibility): string
+    {
+        return match ($visibility) {
+            'public' => 'Publico',
+            'unlisted' => 'No listado',
+            'private' => 'Privado',
+            default => $visibility,
+        };
     }
 
     public static function decodeJson(?string $json): array

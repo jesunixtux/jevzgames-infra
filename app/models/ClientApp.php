@@ -185,11 +185,12 @@ final class ClientApp
         }
 
         $build = GameBuild::latestForGame($gameId);
-        if ($build === null || empty($build['download_url'])) {
+        if ($build === null) {
             throw new RuntimeException('Este juego aun no tiene build instalable.');
         }
 
         $license = Game::grantLicense($userId, $gameId, 'client');
+        $offlineAvailable = self::offlineAllowed($game) && self::buildSupportsLocalInstall($build);
 
         return [
             'game' => [
@@ -202,14 +203,14 @@ final class ClientApp
                 'has_license' => 1,
                 'install_build' => $build,
                 'offline_allowed' => self::offlineAllowed($game),
-                'offline_available' => self::offlineAllowed($game) && $build !== null,
+                'offline_available' => $offlineAvailable,
                 'offline_entitlement' => self::offlineEntitlement($userId, [
                     'game_id' => $gameId,
                     'current_version' => $game['current_version'] ?? null,
                     'license_id' => $license['id'] ?? null,
                     'license_key_preview' => $license['license_key_preview'] ?? null,
                     'licensed_at' => $license['granted_at'] ?? null,
-                ], self::offlineAllowed($game), self::offlineAllowed($game) && $build !== null, date('c')),
+                ], self::offlineAllowed($game), $offlineAvailable, date('c')),
                 'license' => $license,
             ],
             'license' => $license,
@@ -311,7 +312,7 @@ final class ClientApp
         $hasLicense = !empty($game['license_id']) || !empty($game['license']) || (int) ($game['has_license'] ?? 0) === 1;
         $isLinked = !empty($game['linked_at']) || (int) ($game['is_linked'] ?? 0) === 1;
         $offlineAllowed = self::offlineAllowed($game);
-        $offlineAvailable = $offlineAllowed && $hasLicense && $build !== null;
+        $offlineAvailable = $offlineAllowed && $hasLicense && self::buildSupportsLocalInstall($build);
 
         return [
             'id' => $gameId,
@@ -406,6 +407,15 @@ final class ClientApp
                 'offline_requires_prior_license' => true,
             ],
         ];
+    }
+
+    private static function buildSupportsLocalInstall(?array $build): bool
+    {
+        if ($build === null) {
+            return false;
+        }
+
+        return (string) ($build['delivery_type'] ?? 'zip') === 'zip' && !empty($build['download_url']);
     }
 
     private static function offlineAllowed(array $game): bool

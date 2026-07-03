@@ -406,10 +406,10 @@ Devuelve:
 
 - `owned_games`: biblioteca real del launcher. Solo juegos vinculados o con licencia activa.
 - `linked_games`: alias antiguo para compatibilidad.
-- `catalog`: catalogo visible para explorar u obtener juegos.
+- `catalog`: catalogo visible para explorar juegos.
 - `offline_cache`: reglas y nombres de archivos locales recomendados.
 
-Cada juego puede incluir `install_build` si Admin subio o registro un `.zip` instalable:
+Cada juego puede incluir `install_build` si Admin subio un `.zip` instalable o registro una version externa:
 
 ```json
 {
@@ -434,6 +434,7 @@ Cada juego puede incluir `install_build` si Admin subio o registro un `.zip` ins
       "install_build": {
         "version": "0.1.0",
         "channel": "stable",
+        "delivery_type": "zip",
         "download_url": "http://jevzgames.local/uploads/builds/jumpfall/jumpfall-0.1.0-stable.zip",
         "checksum": "sha256...",
         "size_bytes": 123456,
@@ -444,6 +445,16 @@ Cada juego puede incluir `install_build` si Admin subio o registro un `.zip` ins
   "install_build": {
     "version": "0.1.0",
     "channel": "development",
+    "delivery_type": "external_platform",
+    "platform": "steam",
+    "platform_app_id": "480",
+    "launch_url": "steam://run/480",
+    "download_url": null
+  },
+  "zip_install_build": {
+    "version": "0.1.0",
+    "channel": "development",
+    "delivery_type": "zip",
     "download_url": "http://jevzgames.local/uploads/builds/jumpfall/jumpfall-0.1.0-development.zip",
     "checksum": "sha256...",
     "size_bytes": 123456,
@@ -459,10 +470,11 @@ Modo offline:
 - No permitido: obtener licencias nuevas sin conexion.
 - Cache local recomendada: `session.json`, `library-cache.json`, `games/<slug>/installed.json`.
 - No guardar contrasenas localmente.
+- Si `delivery_type=external_platform`, el launcher debe abrir `launch_url` online y no guardarlo como instalacion offline.
 
 ### POST `/api/client/obtain-game/`
 
-Crea la licencia del juego para el usuario autenticado y lo agrega a biblioteca. Solo funciona si el juego visible tiene build instalable.
+Endpoint legado. Crea la licencia del juego para el usuario autenticado y lo agrega a biblioteca. El launcher 1.1 no debe usarlo: la licencia normal se obtiene desde la web.
 
 Header:
 
