@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS games (
     slug VARCHAR(160) NOT NULL UNIQUE,
     description TEXT NULL,
     status ENUM('development', 'playtest', 'beta', 'published', 'archived') NOT NULL DEFAULT 'development',
+    visibility ENUM('public', 'unlisted', 'private') NOT NULL DEFAULT 'public',
     current_version VARCHAR(60) NULL,
     banner_path VARCHAR(255) NULL,
     config_json LONGTEXT NULL,
@@ -131,6 +132,7 @@ CREATE TABLE IF NOT EXISTS games (
     updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_games_owner (owner_user_id),
     INDEX idx_games_status (status),
+    INDEX idx_games_visibility (visibility),
     CONSTRAINT fk_games_owner FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -188,6 +190,10 @@ CREATE TABLE IF NOT EXISTS game_builds (
     game_id INT UNSIGNED NOT NULL,
     version VARCHAR(60) NOT NULL,
     channel ENUM('development', 'playtest', 'beta', 'stable', 'archived') NOT NULL DEFAULT 'development',
+    delivery_type ENUM('zip', 'external_platform') NOT NULL DEFAULT 'zip',
+    platform VARCHAR(60) NULL,
+    platform_app_id VARCHAR(120) NULL,
+    platform_url VARCHAR(500) NULL,
     file_path VARCHAR(255) NULL,
     checksum VARCHAR(128) NULL,
     size_bytes BIGINT UNSIGNED NULL,

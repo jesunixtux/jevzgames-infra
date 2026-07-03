@@ -19,6 +19,7 @@ $links = array_values(array_filter(Game::userLinks($userId), static function (ar
 }));
 $builds = GameBuild::latestForGames(array_map(static fn (array $game): int => (int) $game['game_id'], $links));
 $contentSettings = PlatformSettings::contentSettings();
+$clientEnabled = PlatformSettings::enabled('client');
 
 Page::header('Biblioteca');
 ?>
@@ -56,7 +57,12 @@ Page::header('Biblioteca');
     <?php else: ?>
         <div class="game-grid">
             <?php foreach ($links as $game): ?>
-                <?php $build = $builds[(int) $game['game_id']] ?? null; ?>
+                <?php
+                $build = $builds[(int) $game['game_id']] ?? null;
+                $buildIsZip = $build && (($build['delivery_type'] ?? 'zip') === 'zip') && !empty($build['download_url']);
+                $buildIsExternal = $build && (($build['delivery_type'] ?? 'zip') === 'external_platform') && !empty($build['launch_url']);
+                $canDownloadFromWeb = !$clientEnabled && $buildIsZip;
+                ?>
                 <article class="game-card">
                     <div class="game-card__header">
                         <h3><?= e($game['name']) ?></h3>
@@ -74,6 +80,9 @@ Page::header('Biblioteca');
                             <dd>
                                 <?php if ($build): ?>
                                     <?= e($build['version']) ?> / <?= e($build['channel']) ?>
+                                    <?php if ($buildIsExternal): ?>
+                                        <br><span class="muted"><?= e((string) ($build['platform'] ?? 'plataforma externa')) ?></span>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     Sin build instalable
                                 <?php endif; ?>
@@ -83,8 +92,12 @@ Page::header('Biblioteca');
                     <div class="actions">
                         <a class="button button--secondary" href="<?= e(url('/games/?game=' . rawurlencode((string) $game['slug']))) ?>">Ver juego</a>
                         <a class="button button--secondary" href="<?= e(url('/achievements/?game=' . (int) $game['game_id'])) ?>">Logros</a>
-                        <?php if ($build && !empty($build['download_url'])): ?>
+                        <?php if ($canDownloadFromWeb): ?>
                             <a class="button" href="<?= e($build['download_url']) ?>">Descargar build</a>
+                        <?php elseif ($clientEnabled && $buildIsZip): ?>
+                            <span class="muted">Instalable desde el cliente.</span>
+                        <?php elseif ($buildIsExternal): ?>
+                            <span class="muted">Se abre desde <?= e((string) ($build['platform'] ?? 'plataforma externa')) ?> usando el cliente.</span>
                         <?php endif; ?>
                     </div>
                 </article>

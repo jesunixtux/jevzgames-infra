@@ -72,6 +72,7 @@ final class Admin
 
     public static function games(): array
     {
+        Game::ensureVisibilityColumn();
         $stmt = Database::pdo()->query(
             'SELECT g.*, u.username AS owner_username
              FROM games g
@@ -98,6 +99,7 @@ final class Admin
 
     public static function findGame(int $gameId): ?array
     {
+        Game::ensureVisibilityColumn();
         $stmt = Database::pdo()->prepare('SELECT * FROM games WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => $gameId]);
         $game = $stmt->fetch();
@@ -109,6 +111,7 @@ final class Admin
     {
         $data = self::validatedGameInput($input);
         $pdo = Database::pdo();
+        Game::ensureVisibilityColumn();
 
         if ($data['id'] > 0) {
             $stmt = $pdo->prepare(
@@ -117,6 +120,7 @@ final class Admin
                      slug = :slug,
                      description = :description,
                      status = :status,
+                     visibility = :visibility,
                      current_version = :current_version,
                      config_json = :config_json,
                      endpoints_json = :endpoints_json,
@@ -138,8 +142,8 @@ final class Admin
         }
 
         $stmt = $pdo->prepare(
-            'INSERT INTO games (name, slug, description, status, current_version, config_json, endpoints_json, external_database_json, cdn_json, created_at, updated_at)
-             VALUES (:name, :slug, :description, :status, :current_version, :config_json, :endpoints_json, :external_database_json, :cdn_json, NOW(), NOW())'
+            'INSERT INTO games (name, slug, description, status, visibility, current_version, config_json, endpoints_json, external_database_json, cdn_json, created_at, updated_at)
+             VALUES (:name, :slug, :description, :status, :visibility, :current_version, :config_json, :endpoints_json, :external_database_json, :cdn_json, NOW(), NOW())'
         );
 
         $insertData = $data;
@@ -329,6 +333,7 @@ final class Admin
         $slug = strtolower(trim((string) ($input['slug'] ?? '')));
         $description = trim((string) ($input['description'] ?? ''));
         $status = trim((string) ($input['status'] ?? 'development'));
+        $visibility = trim((string) ($input['visibility'] ?? 'public'));
         $currentVersion = trim((string) ($input['current_version'] ?? ''));
         $configJson = self::cleanJson((string) ($input['config_json'] ?? ''));
         $endpointsJson = self::cleanJson((string) ($input['endpoints_json'] ?? ''));
@@ -351,6 +356,10 @@ final class Admin
             throw new RuntimeException('Estado de juego invalido.');
         }
 
+        if (!in_array($visibility, Game::visibilityOptions(), true)) {
+            throw new RuntimeException('Visibilidad de juego invalida.');
+        }
+
         if ($currentVersion !== '' && strlen($currentVersion) > 60) {
             throw new RuntimeException('La version actual no puede superar 60 caracteres.');
         }
@@ -361,6 +370,7 @@ final class Admin
             'slug' => $slug,
             'description' => $description !== '' ? $description : null,
             'status' => $status,
+            'visibility' => $visibility,
             'current_version' => $currentVersion !== '' ? $currentVersion : null,
             'config_json' => $configJson,
             'endpoints_json' => $endpointsJson,

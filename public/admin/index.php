@@ -115,6 +115,13 @@ if (request_is_post()) {
             redirect_to('/admin/?section=games');
         }
 
+        if ($action === 'save_external_platform_build') {
+            $buildId = GameBuild::saveExternalPlatform($_POST);
+            ActivityLogger::info('admin_external_platform_build_saved', ['user_id' => $userId, 'build_id' => $buildId, 'game_id' => (int) ($_POST['game_id'] ?? 0)]);
+            flash('message', 'Version de plataforma externa guardada.');
+            redirect_to('/admin/?section=games');
+        }
+
         if ($action === 'delete_game_build') {
             GameBuild::delete((int) ($_POST['build_id'] ?? 0));
             ActivityLogger::info('admin_game_build_deleted', ['user_id' => $userId, 'build_id' => (int) ($_POST['build_id'] ?? 0)]);
@@ -375,6 +382,17 @@ Page::header('Admin');
                     </select>
                 </div>
                 <div class="field">
+                    <label for="visibility">Visibilidad</label>
+                    <select id="visibility" name="visibility">
+                        <?php foreach (Game::visibilityOptions() as $visibility): ?>
+                            <option value="<?= e($visibility) ?>" <?= (($editingGame['visibility'] ?? 'public') === $visibility) ? 'selected' : '' ?>>
+                                <?= e(Game::visibilityLabel($visibility)) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="muted">No listado abre con URL directa. Privado solo dueño, Admin y Superroot.</p>
+                </div>
+                <div class="field">
                     <label for="current_version">Version actual</label>
                     <input id="current_version" name="current_version" value="<?= e($editingGame['current_version'] ?? '') ?>" maxlength="60">
                 </div>
@@ -423,13 +441,14 @@ Page::header('Admin');
                         <th>Slug</th>
                         <th>Version</th>
                         <th>Estado</th>
+                        <th>Visibilidad</th>
                         <th>BD dedicada</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($games === []): ?>
-                        <tr><td colspan="6">No hay juegos registrados.</td></tr>
+                        <tr><td colspan="7">No hay juegos registrados.</td></tr>
                     <?php endif; ?>
                     <?php foreach ($games as $game): ?>
                         <?php $databaseStatus = GameDatabase::publicStatusFromGame($game); ?>
@@ -438,6 +457,7 @@ Page::header('Admin');
                             <td><code><?= e($game['slug']) ?></code></td>
                             <td><?= e($game['current_version'] ?? '') ?></td>
                             <td><?= e($game['status']) ?></td>
+                            <td><?= e(Game::visibilityLabel((string) ($game['visibility'] ?? 'public'))) ?></td>
                             <td>
                                 <?= $databaseStatus['enabled'] ? 'Activa' : 'Inactiva' ?><br>
                                 <span class="muted"><?= $databaseStatus['configured'] ? 'Configurada' : 'Sin configurar' ?></span>
@@ -470,8 +490,8 @@ Page::header('Admin');
     </section>
 
     <section class="panel">
-        <h2>Builds instalables</h2>
-        <p class="muted">Sube un .zip por juego. El cliente lo descarga, extrae y ejecuta la ruta indicada dentro del zip.</p>
+        <h2>Builds y versiones</h2>
+        <p class="muted">Sube un .zip por juego o registra una version externa para que el cliente abra Steam u otra plataforma.</p>
 
         <form class="form" method="post" enctype="multipart/form-data">
             <?= Csrf::field() ?>
@@ -560,6 +580,55 @@ Page::header('Admin');
             </form>
         </details>
 
+        <details class="panel-lite">
+            <summary>Registrar una version en plataforma externa</summary>
+            <form class="form" method="post">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="action" value="save_external_platform_build">
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="external_build_game_id">Juego</label>
+                        <select id="external_build_game_id" name="game_id" required>
+                            <?php foreach ($games as $game): ?>
+                                <option value="<?= e($game['id']) ?>"><?= e($game['name']) ?> (<?= e($game['slug']) ?>)</option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="external_build_version">Version</label>
+                        <input id="external_build_version" name="version" maxlength="60" required>
+                    </div>
+                    <div class="field">
+                        <label for="external_build_channel">Canal</label>
+                        <select id="external_build_channel" name="channel">
+                            <?php foreach (GameBuild::channels() as $channel): ?>
+                                <option value="<?= e($channel) ?>"><?= e($channel) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="external_platform">Plataforma</label>
+                        <input id="external_platform" name="platform" value="steam" maxlength="60" required>
+                    </div>
+                    <div class="field">
+                        <label for="external_platform_app_id">App ID externo</label>
+                        <input id="external_platform_app_id" name="platform_app_id" placeholder="Steam AppID, opcional para otras plataformas" maxlength="120">
+                    </div>
+                    <div class="field">
+                        <label for="external_platform_url">URL de lanzamiento</label>
+                        <input id="external_platform_url" name="platform_url" placeholder="steam://run/480 o epicgames://...">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="external_build_notes">Notas</label>
+                    <textarea id="external_build_notes" name="notes" rows="3"></textarea>
+                </div>
+                <div class="actions">
+                    <button type="submit" class="button button--secondary">Guardar plataforma externa</button>
+                </div>
+            </form>
+        </details>
+
         <div class="table-wrap">
             <table class="data-table">
                 <thead>
@@ -567,6 +636,7 @@ Page::header('Admin');
                         <th>Juego</th>
                         <th>Version</th>
                         <th>Canal</th>
+                        <th>Tipo</th>
                         <th>ZIP</th>
                         <th>Ejecutable</th>
                         <th>Accion</th>
@@ -574,7 +644,7 @@ Page::header('Admin');
                 </thead>
                 <tbody>
                     <?php if ($gameBuilds === []): ?>
-                        <tr><td colspan="6">No hay builds instalables.</td></tr>
+                        <tr><td colspan="7">No hay builds instalables.</td></tr>
                     <?php endif; ?>
                     <?php foreach ($gameBuilds as $build): ?>
                         <tr>
@@ -582,8 +652,16 @@ Page::header('Admin');
                             <td><?= e($build['version']) ?></td>
                             <td><?= e($build['channel']) ?></td>
                             <td>
+                                <?= e((string) ($build['delivery_type'] ?? 'zip')) ?>
+                                <?php if (!empty($build['platform'])): ?>
+                                    <br><span class="muted"><?= e((string) $build['platform']) ?> <?= e((string) ($build['platform_app_id'] ?? '')) ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
                                 <?php if (!empty($build['download_url'])): ?>
                                     <a href="<?= e($build['download_url']) ?>" target="_blank" rel="noreferrer">Descargar</a><br>
+                                <?php elseif (!empty($build['launch_url'])): ?>
+                                    <a href="<?= e($build['launch_url']) ?>" target="_blank" rel="noreferrer">Abrir plataforma</a><br>
                                 <?php endif; ?>
                                 <span class="muted"><?= e((string) ($build['size_bytes'] ?? '')) ?> bytes</span>
                             </td>

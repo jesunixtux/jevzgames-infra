@@ -213,8 +213,10 @@ Permite:
 - Ver version, estado, descripcion y JSON publico.
 - Obtener juegos con build instalable, vincular o desvincular el juego a la cuenta del usuario.
 - Desvincular borra datos de ese juego para el usuario: cloud saves, player data, logros, tokens, inventario y licencia del juego.
+- Controlar visibilidad por juego: `public` aparece en catalogo, `unlisted` solo abre con URL directa y `private` solo lo ve el dueño, Admin o Superroot.
 
 El boton manual de vincular queda reservado a `admin` y `superroot`. Los jugadores normales se vinculan al iniciar sesion desde una app compatible o al obtener un juego instalable.
+Si el cliente tipo Steam esta activo, la pagina web no expone enlaces directos al ZIP; la instalacion y updates se hacen desde el cliente.
 
 La biblioteca del usuario vive en:
 
@@ -234,6 +236,7 @@ Un juego se registra desde Admin en la tabla `games` con:
 - `slug`
 - `description`
 - `status`
+- `visibility`
 - `current_version`
 - `config_json`
 - `endpoints_json`
@@ -448,7 +451,6 @@ Flujo minimo para montar un launcher:
 5. Usa `Authorization: Bearer jvg_ct_...` para:
    - `GET|POST /api/client/me/`
    - `POST /api/client/library/`
-   - `POST /api/client/obtain-game/`
    - `POST /api/client/inventory/`
    - `POST /api/client/redeem/`
    - `POST /api/client/presence/`
@@ -467,11 +469,12 @@ Si una cuenta esta suspendida, el login web muestra un popup y el cliente recibe
 `POST /api/client/library/` devuelve dos listas separadas:
 
 - `owned_games`: juegos vinculados o con licencia activa del usuario. Esta es la biblioteca que debe mostrar el launcher.
-- `catalog`: catalogo publico visible. Sirve para explorar u obtener juegos, no para modo offline.
+- `catalog`: catalogo publico visible. Sirve para explorar juegos, no para modo offline.
 
 El campo antiguo `linked_games` sigue existiendo para compatibilidad, pero el launcher nuevo debe preferir `owned_games`.
 
 Cada item de `owned_games` incluye `install_build`, `has_license`, `is_linked`, `offline_allowed`, `offline_available` y `last_played_at`. El modo offline solo debe permitir ejecutar juegos ya instalados cuando `offline_available=true`; no debe descargar builds nuevas ni crear licencias nuevas sin conexion.
+Si `install_build.delivery_type` es `external_platform`, el cliente debe abrir `install_build.launch_url` y no intentar descargar ZIP. Para Steam se puede usar `steam://run/<app_id>`.
 
 Estructura local recomendada para el launcher:
 
@@ -494,19 +497,19 @@ El cliente puede implementar chat por polling cada 5 o 10 segundos con:
 
 No usa WebSocket todavia. Todos los endpoints requieren Bearer token y reutilizan las mismas conversaciones del panel web.
 
-### Cliente CEF local
+### Cliente local incluido
 
-El cliente local basado en Chromium Embedded Framework esta en:
+El launcher local reparado para pruebas esta en:
 
 ```text
-clients/cef-steam-client/
+clients/raclauncher/
 ```
 
 Para ejecutarlo:
 
 ```bat
-cd C:\xampp\jevzgames-infra\clients\cef-steam-client
-.\run-local.cmd
+cd C:\xampp\jevzgames-infra\clients\raclauncher
+.\Run-RacLauncher.cmd
 ```
 
 Para que un juego se instale tipo Steam:
@@ -516,23 +519,24 @@ Para que un juego se instale tipo Steam:
 3. En `/admin/?section=games`, bloque `Builds instalables`, sube el `.zip`.
 4. Indica la ruta relativa del ejecutable, por ejemplo `JumpFall.exe` o `Windows/JumpFall.exe`.
 5. El cliente recibe `install_build` desde `/api/client/library/`.
-6. Si el juego esta en catalogo y tiene build, el cliente llama `/api/client/obtain-game/` para crear licencia y agregarlo a biblioteca.
-7. El cliente compara la version instalada local con la ultima build y muestra Instalar, Reinstalar o Actualizar.
+6. La licencia se obtiene desde la web; el launcher no debe crear licencias nuevas.
+7. El cliente compara la version instalada local con la ultima build y actualiza automaticamente si hay otra version ZIP.
 8. El cliente descarga, verifica checksum, extrae en `%AppData%\JevzGamesClient\games\<slug>` y ejecuta el `.exe`.
-9. Al ejecutar un juego de la biblioteca, el cliente puede enviar `POST /api/client/presence/` con `{"status":"in_game","game_slug":"slug"}` y volver a `online` al cerrar.
+9. Si la build es de plataforma externa, abre `launch_url` en vez de descargar.
+10. Al ejecutar un juego de la biblioteca, el cliente puede enviar `POST /api/client/presence/` con `{"status":"in_game","game_slug":"slug"}` y volver a `online` al cerrar.
 
-La primera compilacion del cliente descarga CefSharp/CEF desde NuGet y puede tardar bastante porque CEF es pesado.
+El cliente incluido es el launcher WinForms/PowerShell beta. El cliente CEF puede construirse despues sobre los mismos endpoints.
 
-### Update 1.0
+### Update 1.1
 
 Para actualizar una infraestructura ya montada sin reinstalar, copia los archivos nuevos conservando `app/config/config.php`, `storage/`, `public/uploads/` y `phpmailer/`, y ejecuta:
 
 ```bat
 cd C:\xampp\jevzgames-infra
-C:\xampp\php\php.exe update\1.0\update.php
+C:\xampp\php\php.exe update\1.1\update.php
 ```
 
-El script crea tablas faltantes y agrega columnas necesarias como `user_games.last_played_at`.
+El script crea tablas faltantes y agrega columnas necesarias como `games.visibility` y metadatos de plataforma externa en `game_builds`.
 
 ## Apache
 

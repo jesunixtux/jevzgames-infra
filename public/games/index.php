@@ -16,6 +16,8 @@ require_installed();
 $user = Auth::user();
 $userId = $user ? (int) $user['id'] : null;
 $canManuallyLinkGames = Auth::hasRole(['admin', 'superroot']);
+$canViewPrivateGames = Auth::hasRole(['admin', 'superroot']);
+$clientEnabled = PlatformSettings::enabled('client');
 $statusFilter = (string) ($_GET['status'] ?? 'all');
 $allowedStatuses = array_merge(['all'], Game::visibleStatuses());
 if (!in_array($statusFilter, $allowedStatuses, true)) {
@@ -23,7 +25,7 @@ if (!in_array($statusFilter, $allowedStatuses, true)) {
 }
 
 $selectedSlug = (string) ($_GET['game'] ?? '');
-$selectedGame = $selectedSlug !== '' ? Game::findPublicBySlug($selectedSlug, $userId) : null;
+$selectedGame = $selectedSlug !== '' ? Game::findPublicBySlug($selectedSlug, $userId, $canViewPrivateGames) : null;
 
 if (request_is_post()) {
     if (!Auth::check()) {
@@ -53,7 +55,7 @@ if (request_is_post()) {
             flash('message', 'Juego vinculado a tu cuenta.');
         } elseif ($action === 'obtain') {
             $build = GameBuild::latestForGame($gameId);
-            if ($build === null || empty($build['download_url'])) {
+            if ($build === null) {
                 throw new RuntimeException('Este juego aun no tiene build instalable.');
             }
             Game::grantLicense((int) $userId, $gameId, 'web');
@@ -73,7 +75,7 @@ if (request_is_post()) {
     redirect_to($slug !== '' ? '/games/?game=' . rawurlencode($slug) : '/games/');
 }
 
-$games = Game::publicGames($userId, $statusFilter);
+$games = Game::publicGames($userId, $statusFilter, false, $canViewPrivateGames);
 $links = $userId !== null ? Game::userLinks($userId) : [];
 $builds = GameBuild::latestForGames(array_map(static fn (array $game): int => (int) $game['id'], $games));
 $selectedBuild = $selectedGame ? GameBuild::latestForGame((int) $selectedGame['id']) : null;
@@ -112,6 +114,9 @@ Page::header(t('nav.games'));
     $config = Game::decodeJson($selectedGame['config_json'] ?? null);
     $endpoints = Game::decodeJson($selectedGame['endpoints_json'] ?? null);
     $cdn = Game::decodeJson($selectedGame['cdn_json'] ?? null);
+    $selectedBuildIsZip = $selectedBuild && (($selectedBuild['delivery_type'] ?? 'zip') === 'zip') && !empty($selectedBuild['download_url']);
+    $selectedBuildIsExternal = $selectedBuild && (($selectedBuild['delivery_type'] ?? 'zip') === 'external_platform') && !empty($selectedBuild['launch_url']);
+    $selectedCanDownloadFromWeb = !$clientEnabled && $selectedBuildIsZip;
     ?>
     <section class="game-detail">
         <article class="panel">
@@ -136,6 +141,7 @@ Page::header(t('nav.games'));
             <dl class="meta">
                 <div><dt>Builds</dt><dd><?= e($selectedGame['build_count'] ?? 0) ?></dd></div>
                 <div><dt>Ultima build</dt><dd><?= e($selectedGame['latest_build_at'] ?? 'Sin builds') ?></dd></div>
+                <div><dt>Visibilidad</dt><dd><?= e(Game::visibilityLabel((string) ($selectedGame['visibility'] ?? 'public'))) ?></dd></div>
                 <div><dt>Creado</dt><dd><?= e($selectedGame['created_at']) ?></dd></div>
             </dl>
 
@@ -143,8 +149,12 @@ Page::header(t('nav.games'));
                 <?php if (!$user): ?>
                     <a class="button" href="<?= e(url('/login/')) ?>">Iniciar sesion</a>
                 <?php elseif ((int) $selectedGame['is_linked'] === 1): ?>
-                    <?php if ($selectedBuild && !empty($selectedBuild['download_url'])): ?>
+                    <?php if ($selectedCanDownloadFromWeb): ?>
                         <a class="button" href="<?= e($selectedBuild['download_url']) ?>">Descargar build</a>
+                    <?php elseif ($clientEnabled && $selectedBuildIsZip): ?>
+                        <span class="muted">Disponible desde el cliente.</span>
+                    <?php elseif ($selectedBuildIsExternal): ?>
+                        <span class="muted">Se abre desde <?= e((string) ($selectedBuild['platform'] ?? 'plataforma externa')) ?> usando el cliente.</span>
                     <?php endif; ?>
                     <form method="post">
                         <?= Csrf::field() ?>
@@ -161,7 +171,7 @@ Page::header(t('nav.games'));
                         <input type="hidden" name="slug" value="<?= e($selectedGame['slug']) ?>">
                         <button type="submit">Vincular a mi cuenta</button>
                     </form>
-                <?php elseif ($selectedBuild && !empty($selectedBuild['download_url'])): ?>
+                <?php elseif ($selectedBuild): ?>
                     <form method="post">
                         <?= Csrf::field() ?>
                         <input type="hidden" name="action" value="obtain">
@@ -229,6 +239,9 @@ Page::header(t('nav.games'));
             <?php foreach ($games as $game): ?>
                 <?php
                 $build = $builds[(int) $game['id']] ?? null;
+                $buildIsZip = $build && (($build['delivery_type'] ?? 'zip') === 'zip') && !empty($build['download_url']);
+                $buildIsExternal = $build && (($build['delivery_type'] ?? 'zip') === 'external_platform') && !empty($build['launch_url']);
+                $canDownloadFromWeb = !$clientEnabled && $buildIsZip;
                 $description = (string) ($game['description'] ?? '');
                 $shortDescription = $description !== ''
                     ? (strlen($description) > 160 ? substr($description, 0, 157) . '...' : $description)
@@ -246,13 +259,18 @@ Page::header(t('nav.games'));
                         <div><dt>Slug</dt><dd><code><?= e($game['slug']) ?></code></dd></div>
                         <div><dt>Version</dt><dd><?= e($game['current_version'] ?? 'Sin version') ?></dd></div>
                         <div><dt>Build</dt><dd><?= $build ? e($build['version'] . ' / ' . $build['channel']) : 'Sin build' ?></dd></div>
+                        <div><dt>Visibilidad</dt><dd><?= e(Game::visibilityLabel((string) ($game['visibility'] ?? 'public'))) ?></dd></div>
                         <div><dt>Vinculado</dt><dd><?= ((int) $game['is_linked'] === 1) ? 'Si' : 'No' ?></dd></div>
                     </dl>
                     <div class="actions">
                         <a class="button button--secondary" href="<?= e(url('/games/?game=' . rawurlencode((string) $game['slug']))) ?>">Ver juego</a>
-                        <?php if ($user && (int) $game['is_linked'] === 1 && $build && !empty($build['download_url'])): ?>
+                        <?php if ($user && (int) $game['is_linked'] === 1 && $canDownloadFromWeb): ?>
                             <a class="button" href="<?= e($build['download_url']) ?>">Descargar</a>
-                        <?php elseif ($user && $build && !empty($build['download_url'])): ?>
+                        <?php elseif ($user && (int) $game['is_linked'] === 1 && $clientEnabled && $buildIsZip): ?>
+                            <span class="muted">Disponible en cliente</span>
+                        <?php elseif ($user && (int) $game['is_linked'] === 1 && $buildIsExternal): ?>
+                            <span class="muted">Abre <?= e((string) ($build['platform'] ?? 'plataforma')) ?> desde el cliente</span>
+                        <?php elseif ($user && $build): ?>
                             <form method="post">
                                 <?= Csrf::field() ?>
                                 <input type="hidden" name="action" value="obtain">

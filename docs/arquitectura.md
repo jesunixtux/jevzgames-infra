@@ -251,16 +251,16 @@ El canje ya entrega recompensas a `user_inventory`. El hash del codigo se calcul
 
 `client_sessions` guarda tokens Bearer hasheados para launchers externos. El cliente consulta `/api/client/config/`, inicia sesion en `/api/client/login/` y luego usa `/api/client/library/`, `/api/client/inventory/` y `/api/client/redeem/`.
 
-El cliente CEF local vive en `clients/cef-steam-client/`. Renderiza una UI HTML dentro de Chromium Embedded Framework y expone un bridge C# para:
+El launcher local incluido vive en `clients/raclauncher/`. Usa WinForms/PowerShell para probar el flujo y expone la base para un cliente CEF posterior:
 
 - Autenticar contra `/api/client/login/`.
 - Leer biblioteca desde `/api/client/library/`.
-- Descargar builds `.zip`.
+- Descargar builds `.zip` o abrir una plataforma externa mediante `launch_url`.
 - Validar checksum SHA-256.
 - Extraer de forma segura evitando path traversal.
 - Ejecutar el `executable_path` configurado para cada build.
 
-Las builds instalables viven en `game_builds`. Admin sube un `.zip` desde `/admin/?section=games`, indica version, canal y ejecutable relativo dentro del zip. El backend publica esos datos como `install_build`.
+Las builds instalables viven en `game_builds`. Admin sube un `.zip` desde `/admin/?section=games`, indica version, canal y ejecutable relativo dentro del zip. Tambien puede registrar una version de plataforma externa, por ejemplo Steam, con `launch_url`. El backend publica esos datos como `install_build`.
 
 ## Sistema de soporte
 
