@@ -1,5 +1,6 @@
 app/models/Admin.php
 app/models/ClientApp.php
+<<<<<<< Updated upstream
 app/models/DirectMessage.php
 app/models/Game.php
 app/models/GameBuild.php
@@ -8,12 +9,22 @@ app/models/PlatformSettings.php
 public/admin/index.php
 public/games/index.php
 public/library/index.php
+=======
+app/models/DeveloperApi.php
+app/models/Game.php
+app/models/OAuth.php
+public/admin/index.php
+public/games/index.php
+>>>>>>> Stashed changes
 database/schema.sql
 README.md
 docs/api.md
 docs/arquitectura.md
+<<<<<<< Updated upstream
 clients/raclauncher/RacLauncher.ps1
 clients/raclauncher/Run-RacLauncher.cmd
 clients/raclauncher/README.md
+=======
+>>>>>>> Stashed changes
 update/1.1/update.php
 update/1.1/README.md

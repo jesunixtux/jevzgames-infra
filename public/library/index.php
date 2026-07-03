@@ -59,9 +59,13 @@ Page::header('Biblioteca');
             <?php foreach ($links as $game): ?>
                 <?php
                 $build = $builds[(int) $game['game_id']] ?? null;
+<<<<<<< Updated upstream
                 $buildIsZip = $build && (($build['delivery_type'] ?? 'zip') === 'zip') && !empty($build['download_url']);
                 $buildIsExternal = $build && (($build['delivery_type'] ?? 'zip') === 'external_platform') && !empty($build['launch_url']);
                 $canDownloadFromWeb = !$clientEnabled && $buildIsZip;
+=======
+                $buildCanDownloadOnWeb = $build && !empty($build['download_url']) && !$clientEnabled;
+>>>>>>> Stashed changes
                 ?>
                 <article class="game-card">
                     <div class="game-card__header">
@@ -92,12 +96,19 @@ Page::header('Biblioteca');
                     <div class="actions">
                         <a class="button button--secondary" href="<?= e(url('/games/?game=' . rawurlencode((string) $game['slug']))) ?>">Ver juego</a>
                         <a class="button button--secondary" href="<?= e(url('/achievements/?game=' . (int) $game['game_id'])) ?>">Logros</a>
+<<<<<<< Updated upstream
                         <?php if ($canDownloadFromWeb): ?>
                             <a class="button" href="<?= e($build['download_url']) ?>">Descargar build</a>
                         <?php elseif ($clientEnabled && $buildIsZip): ?>
                             <span class="muted">Instalable desde el cliente.</span>
                         <?php elseif ($buildIsExternal): ?>
                             <span class="muted">Se abre desde <?= e((string) ($build['platform'] ?? 'plataforma externa')) ?> usando el cliente.</span>
+=======
+                        <?php if ($buildCanDownloadOnWeb): ?>
+                            <a class="button" href="<?= e($build['download_url']) ?>">Descargar build</a>
+                        <?php elseif ($build && !empty($build['download_url']) && $clientEnabled): ?>
+                            <a class="button" href="<?= e(url('/client/')) ?>"><?= e(i18n_text('Instalar desde cliente', 'Install from client')) ?></a>
+>>>>>>> Stashed changes
                         <?php endif; ?>
                     </div>
                 </article>

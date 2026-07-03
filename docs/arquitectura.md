@@ -64,7 +64,13 @@ La pagina `/games/` lee la tabla `games` y muestra juegos en estados visibles:
 
 Los juegos `archived` no se muestran en el catalogo publico.
 
-El detalle usa `?game=slug` y permite vincular la cuenta del usuario con el juego mediante `user_games`.
+La exposicion publica se controla con `games.visibility`:
+
+- `public`: aparece en `/games/` y abre por URL.
+- `unlisted`: no aparece en `/games/`, pero abre por URL directa.
+- `private`: no aparece publicamente; solo lo ve el duenio, `admin` o `superroot`. La biblioteca conserva juegos ya vinculados o licenciados para no romper instalaciones.
+
+El detalle usa `?game=slug` y permite vincular la cuenta del usuario con el juego mediante `user_games` cuando la visibilidad lo permite.
 
 El vinculo manual desde `/games/` queda reservado a `admin` y `superroot`. Los usuarios normales se vinculan al iniciar sesion desde el juego o cliente. Al desvincular un juego se purgan datos del usuario para ese juego: cloud saves, player data, logros, tokens OAuth e inventario asociado.
 

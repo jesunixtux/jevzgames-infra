@@ -9,7 +9,19 @@ use RuntimeException;
 final class Game
 {
     private const VISIBLE_STATUSES = ['development', 'playtest', 'beta', 'published'];
+<<<<<<< Updated upstream
     private const VISIBILITY_OPTIONS = ['public', 'unlisted', 'private'];
+=======
+    private const VISIBILITIES = ['public', 'unlisted', 'private'];
+
+    public static function ensureVisibilityColumn(): void
+    {
+        self::addColumnIfMissing('games', 'visibility', 'ENUM("public","unlisted","private") NOT NULL DEFAULT "public" AFTER status');
+        if (!self::indexExists('games', 'idx_games_visibility')) {
+            Database::pdo()->exec('ALTER TABLE games ADD INDEX idx_games_visibility (visibility)');
+        }
+    }
+>>>>>>> Stashed changes
 
     public static function ensureLicenseTables(): void
     {
@@ -37,14 +49,20 @@ final class Game
 
     public static function ensureVisibilityColumn(): void
     {
+<<<<<<< Updated upstream
         self::addColumnIfMissing('games', 'visibility', 'ENUM("public", "unlisted", "private") NOT NULL DEFAULT "public" AFTER status');
     }
 
     public static function publicGames(?int $userId = null, string $status = 'all', bool $includeUnlisted = false, bool $canViewPrivate = false): array
     {
+=======
+>>>>>>> Stashed changes
         self::ensureVisibilityColumn();
         $params = [];
-        $where = ['g.status IN ("development", "playtest", "beta", "published")'];
+        $where = [
+            'g.status IN ("development", "playtest", "beta", "published")',
+            'g.visibility = "public"',
+        ];
 
         if ($status !== 'all' && in_array($status, self::VISIBLE_STATUSES, true)) {
             $where[] = 'g.status = :status';
@@ -124,6 +142,17 @@ final class Game
             $params['licensed_user_id'] = $userId;
         }
 
+        $visibilityWhere = 'AND g.visibility IN ("public", "unlisted")';
+        if ($canViewPrivate) {
+            $visibilityWhere = '';
+        } elseif ($userId !== null) {
+            $visibilityWhere = 'AND (g.visibility IN ("public", "unlisted")
+                                    OR g.owner_user_id = :viewer_user_id
+                                    OR ug.user_id IS NOT NULL
+                                    OR ugl.id IS NOT NULL)';
+            $params['viewer_user_id'] = $userId;
+        }
+
         $stmt = Database::pdo()->prepare(
             'SELECT g.*, ' . $linkedSelect . ',
                     builds.latest_build_at,
@@ -137,7 +166,11 @@ final class Game
              ) builds ON builds.game_id = g.id
              WHERE g.slug = :slug
                AND g.status IN ("development", "playtest", "beta", "published")
+<<<<<<< Updated upstream
                AND (' . implode(' OR ', $visibilityWhere) . ')
+=======
+               ' . $visibilityWhere . '
+>>>>>>> Stashed changes
              LIMIT 1'
         );
         $stmt->execute($params);
@@ -264,7 +297,11 @@ final class Game
         self::ensureLicenseTables();
         self::ensureUserGameMetadataColumns();
         $stmt = Database::pdo()->prepare(
+<<<<<<< Updated upstream
             'SELECT ug.*, g.owner_user_id, g.name, g.slug, g.status, g.visibility, g.current_version, g.config_json,
+=======
+            'SELECT ug.*, g.name, g.slug, g.status, g.visibility, g.current_version, g.config_json,
+>>>>>>> Stashed changes
                     l.id AS license_id, l.source AS license_source, l.license_key_preview, l.status AS license_status, l.granted_at AS licensed_at
              FROM user_games ug
              INNER JOIN games g ON g.id = ug.game_id
@@ -312,9 +349,15 @@ final class Game
         return self::VISIBLE_STATUSES;
     }
 
+<<<<<<< Updated upstream
     public static function visibilityOptions(): array
     {
         return self::VISIBILITY_OPTIONS;
+=======
+    public static function visibilities(): array
+    {
+        return self::VISIBILITIES;
+>>>>>>> Stashed changes
     }
 
     public static function visibilityLabel(string $visibility): string
@@ -391,6 +434,23 @@ final class Game
         if ((int) $stmt->fetchColumn() === 0) {
             Database::pdo()->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition);
         }
+    }
+
+    private static function indexExists(string $table, string $index): bool
+    {
+        $stmt = Database::pdo()->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.statistics
+             WHERE table_schema = DATABASE()
+               AND table_name = :table_name
+               AND index_name = :index_name'
+        );
+        $stmt->execute([
+            'table_name' => $table,
+            'index_name' => $index,
+        ]);
+
+        return (int) $stmt->fetchColumn() > 0;
     }
 
     private static function cleanLicenseSource(string $source): string

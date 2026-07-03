@@ -35,6 +35,7 @@ final class DeveloperApi
 
     public static function games(array $context): array
     {
+        Game::ensureVisibilityColumn();
         $params = [];
         $where = '1=1';
         if (empty($context['all_games'])) {
@@ -43,7 +44,7 @@ final class DeveloperApi
         }
 
         $stmt = Database::pdo()->prepare(
-            'SELECT g.id, g.owner_user_id, g.name, g.slug, g.description, g.status, g.current_version, g.created_at, g.updated_at,
+            'SELECT g.id, g.owner_user_id, g.name, g.slug, g.description, g.status, g.visibility, g.current_version, g.created_at, g.updated_at,
                     builds.build_count,
                     builds.latest_build_at,
                     keys.active_api_keys,
@@ -73,6 +74,7 @@ final class DeveloperApi
             'slug' => (string) $row['slug'],
             'description' => (string) ($row['description'] ?? ''),
             'status' => (string) $row['status'],
+            'visibility' => (string) ($row['visibility'] ?? 'public'),
             'current_version' => $row['current_version'] ?? null,
             'build_count' => (int) ($row['build_count'] ?? 0),
             'latest_build_at' => $row['latest_build_at'] ?? null,
@@ -177,6 +179,7 @@ final class DeveloperApi
 
     public static function accessibleGame(array $context, array $input): array
     {
+        Game::ensureVisibilityColumn();
         $gameId = (int) ($input['game_id'] ?? 0);
         $slug = strtolower(trim((string) ($input['slug'] ?? '')));
 
@@ -276,6 +279,7 @@ final class DeveloperApi
             'slug' => (string) $game['slug'],
             'description' => (string) ($game['description'] ?? ''),
             'status' => (string) $game['status'],
+            'visibility' => (string) ($game['visibility'] ?? 'public'),
             'current_version' => $game['current_version'] ?? null,
             'config' => Game::decodeJson($game['config_json'] ?? null),
             'endpoints' => Game::decodeJson($game['endpoints_json'] ?? null),

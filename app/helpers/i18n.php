@@ -533,6 +533,7 @@ function i18n_html_dictionary(): array
         'Nombre público' => 'Public name',
         'Visibilidad' => 'Visibility',
         'Publico' => 'Public',
+        'No listado' => 'Unlisted',
         'Público' => 'Public',
         'Privado' => 'Private',
         'Subir foto' => 'Upload picture',

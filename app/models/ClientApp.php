@@ -167,15 +167,17 @@ final class ClientApp
     public static function obtainGame(int $userId, int $gameId): array
     {
         self::ensureEnabled();
+        Game::ensureVisibilityColumn();
         if ($userId <= 0 || $gameId <= 0) {
             throw new RuntimeException('Juego invalido.');
         }
 
         $stmt = Database::pdo()->prepare(
-            'SELECT id, name, slug, status, current_version, config_json
+            'SELECT id, name, slug, status, visibility, current_version, config_json
              FROM games
              WHERE id = :id
                AND status IN ("development", "playtest", "beta", "published")
+               AND visibility IN ("public", "unlisted")
              LIMIT 1'
         );
         $stmt->execute(['id' => $gameId]);
@@ -198,6 +200,7 @@ final class ClientApp
                 'name' => (string) $game['name'],
                 'slug' => (string) $game['slug'],
                 'status' => (string) $game['status'],
+                'visibility' => (string) ($game['visibility'] ?? 'public'),
                 'current_version' => $game['current_version'] ?? null,
                 'is_linked' => 1,
                 'has_license' => 1,
@@ -320,6 +323,7 @@ final class ClientApp
             'name' => (string) ($game['name'] ?? ''),
             'slug' => (string) ($game['slug'] ?? ''),
             'status' => (string) ($game['status'] ?? ''),
+            'visibility' => (string) ($game['visibility'] ?? 'public'),
             'current_version' => $game['current_version'] ?? null,
             'has_license' => $hasLicense,
             'is_linked' => $isLinked,
@@ -343,6 +347,7 @@ final class ClientApp
             'slug' => (string) $game['slug'],
             'description' => $game['description'] ?? null,
             'status' => (string) $game['status'],
+            'visibility' => (string) ($game['visibility'] ?? 'public'),
             'current_version' => $game['current_version'] ?? null,
             'banner_path' => $game['banner_path'] ?? null,
             'has_license' => $hasLicense,

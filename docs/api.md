@@ -406,7 +406,11 @@ Devuelve:
 
 - `owned_games`: biblioteca real del launcher. Solo juegos vinculados o con licencia activa.
 - `linked_games`: alias antiguo para compatibilidad.
+<<<<<<< Updated upstream
 - `catalog`: catalogo visible para explorar juegos.
+=======
+- `catalog`: catalogo visible para explorar u obtener juegos. Solo incluye juegos con `visibility=public`.
+>>>>>>> Stashed changes
 - `offline_cache`: reglas y nombres de archivos locales recomendados.
 
 Cada juego puede incluir `install_build` si Admin subio un `.zip` instalable o registro una version externa:
@@ -419,6 +423,7 @@ Cada juego puede incluir `install_build` si Admin subio un `.zip` instalable o r
       "name": "JumpFall",
       "slug": "jumpfall",
       "status": "published",
+      "visibility": "public",
       "current_version": "0.1.0",
       "has_license": true,
       "is_linked": true,

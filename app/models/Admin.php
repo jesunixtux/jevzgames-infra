@@ -10,6 +10,7 @@ use RuntimeException;
 final class Admin
 {
     private const GAME_STATUSES = ['development', 'playtest', 'beta', 'published', 'archived'];
+    private const GAME_VISIBILITIES = ['public', 'unlisted', 'private'];
     private const USER_STATUSES = ['active', 'blocked', 'pending_recovery'];
 
     public static function dashboardStats(): array
@@ -77,7 +78,9 @@ final class Admin
             'SELECT g.*, u.username AS owner_username
              FROM games g
              LEFT JOIN users u ON u.id = g.owner_user_id
-             ORDER BY FIELD(g.status, "published", "beta", "playtest", "development", "archived"), g.name ASC'
+             ORDER BY FIELD(g.visibility, "public", "unlisted", "private"),
+                      FIELD(g.status, "published", "beta", "playtest", "development", "archived"),
+                      g.name ASC'
         );
 
         return $stmt->fetchAll();
@@ -169,6 +172,20 @@ final class Admin
         $stmt = Database::pdo()->prepare('UPDATE games SET status = :status, updated_at = NOW() WHERE id = :id');
         $stmt->execute([
             'status' => $status,
+            'id' => $gameId,
+        ]);
+    }
+
+    public static function updateGameVisibility(int $gameId, string $visibility): void
+    {
+        Game::ensureVisibilityColumn();
+        if (!in_array($visibility, self::GAME_VISIBILITIES, true)) {
+            throw new RuntimeException('Visibilidad de juego invalida.');
+        }
+
+        $stmt = Database::pdo()->prepare('UPDATE games SET visibility = :visibility, updated_at = NOW() WHERE id = :id');
+        $stmt->execute([
+            'visibility' => $visibility,
             'id' => $gameId,
         ]);
     }
@@ -326,8 +343,14 @@ final class Admin
         return self::GAME_STATUSES;
     }
 
+    public static function gameVisibilities(): array
+    {
+        return self::GAME_VISIBILITIES;
+    }
+
     private static function validatedGameInput(array $input): array
     {
+        Game::ensureVisibilityColumn();
         $id = (int) ($input['game_id'] ?? 0);
         $name = trim((string) ($input['name'] ?? ''));
         $slug = strtolower(trim((string) ($input['slug'] ?? '')));
@@ -356,7 +379,11 @@ final class Admin
             throw new RuntimeException('Estado de juego invalido.');
         }
 
+<<<<<<< Updated upstream
         if (!in_array($visibility, Game::visibilityOptions(), true)) {
+=======
+        if (!in_array($visibility, self::GAME_VISIBILITIES, true)) {
+>>>>>>> Stashed changes
             throw new RuntimeException('Visibilidad de juego invalida.');
         }
 

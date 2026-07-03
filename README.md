@@ -216,7 +216,11 @@ Permite:
 - Controlar visibilidad por juego: `public` aparece en catalogo, `unlisted` solo abre con URL directa y `private` solo lo ve el dueño, Admin o Superroot.
 
 El boton manual de vincular queda reservado a `admin` y `superroot`. Los jugadores normales se vinculan al iniciar sesion desde una app compatible o al obtener un juego instalable.
+<<<<<<< Updated upstream
 Si el cliente tipo Steam esta activo, la pagina web no expone enlaces directos al ZIP; la instalacion y updates se hacen desde el cliente.
+=======
+Si el cliente tipo Steam esta activo en Superroot, la web no muestra enlaces directos para descargar ZIP de juegos; los juegos con build se instalan desde el cliente.
+>>>>>>> Stashed changes
 
 La biblioteca del usuario vive en:
 
@@ -236,7 +240,11 @@ Un juego se registra desde Admin en la tabla `games` con:
 - `slug`
 - `description`
 - `status`
+<<<<<<< Updated upstream
 - `visibility`
+=======
+- `visibility` (`public`, `unlisted`, `private`)
+>>>>>>> Stashed changes
 - `current_version`
 - `config_json`
 - `endpoints_json`
@@ -469,12 +477,20 @@ Si una cuenta esta suspendida, el login web muestra un popup y el cliente recibe
 `POST /api/client/library/` devuelve dos listas separadas:
 
 - `owned_games`: juegos vinculados o con licencia activa del usuario. Esta es la biblioteca que debe mostrar el launcher.
+<<<<<<< Updated upstream
 - `catalog`: catalogo publico visible. Sirve para explorar juegos, no para modo offline.
 
 El campo antiguo `linked_games` sigue existiendo para compatibilidad, pero el launcher nuevo debe preferir `owned_games`.
 
 Cada item de `owned_games` incluye `install_build`, `has_license`, `is_linked`, `offline_allowed`, `offline_available` y `last_played_at`. El modo offline solo debe permitir ejecutar juegos ya instalados cuando `offline_available=true`; no debe descargar builds nuevas ni crear licencias nuevas sin conexion.
 Si `install_build.delivery_type` es `external_platform`, el cliente debe abrir `install_build.launch_url` y no intentar descargar ZIP. Para Steam se puede usar `steam://run/<app_id>`.
+=======
+- `catalog`: catalogo publico visible. Solo incluye juegos con `visibility=public`; sirve para explorar u obtener juegos, no para modo offline.
+
+El campo antiguo `linked_games` sigue existiendo para compatibilidad, pero el launcher nuevo debe preferir `owned_games`.
+
+Cada item de `owned_games` incluye `visibility`, `install_build`, `has_license`, `is_linked`, `offline_allowed`, `offline_available` y `last_played_at`. El modo offline solo debe permitir ejecutar juegos ya instalados cuando `offline_available=true`; no debe descargar builds nuevas ni crear licencias nuevas sin conexion.
+>>>>>>> Stashed changes
 
 Estructura local recomendada para el launcher:
 
@@ -537,6 +553,12 @@ C:\xampp\php\php.exe update\1.1\update.php
 ```
 
 El script crea tablas faltantes y agrega columnas necesarias como `games.visibility` y metadatos de plataforma externa en `game_builds`.
+
+Para aplicar controles de visibilidad de juegos en instalaciones existentes, copia los archivos nuevos y ejecuta:
+
+```bat
+C:\xampp\php\php.exe update\1.1\update.php
+```
 
 ## Apache
 

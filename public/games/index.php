@@ -16,7 +16,10 @@ require_installed();
 $user = Auth::user();
 $userId = $user ? (int) $user['id'] : null;
 $canManuallyLinkGames = Auth::hasRole(['admin', 'superroot']);
+<<<<<<< Updated upstream
 $canViewPrivateGames = Auth::hasRole(['admin', 'superroot']);
+=======
+>>>>>>> Stashed changes
 $clientEnabled = PlatformSettings::enabled('client');
 $statusFilter = (string) ($_GET['status'] ?? 'all');
 $allowedStatuses = array_merge(['all'], Game::visibleStatuses());
@@ -25,7 +28,11 @@ if (!in_array($statusFilter, $allowedStatuses, true)) {
 }
 
 $selectedSlug = (string) ($_GET['game'] ?? '');
+<<<<<<< Updated upstream
 $selectedGame = $selectedSlug !== '' ? Game::findPublicBySlug($selectedSlug, $userId, $canViewPrivateGames) : null;
+=======
+$selectedGame = $selectedSlug !== '' ? Game::findPublicBySlug($selectedSlug, $userId, Auth::hasRole(['admin', 'superroot'])) : null;
+>>>>>>> Stashed changes
 
 if (request_is_post()) {
     if (!Auth::check()) {
@@ -114,9 +121,13 @@ Page::header(t('nav.games'));
     $config = Game::decodeJson($selectedGame['config_json'] ?? null);
     $endpoints = Game::decodeJson($selectedGame['endpoints_json'] ?? null);
     $cdn = Game::decodeJson($selectedGame['cdn_json'] ?? null);
+<<<<<<< Updated upstream
     $selectedBuildIsZip = $selectedBuild && (($selectedBuild['delivery_type'] ?? 'zip') === 'zip') && !empty($selectedBuild['download_url']);
     $selectedBuildIsExternal = $selectedBuild && (($selectedBuild['delivery_type'] ?? 'zip') === 'external_platform') && !empty($selectedBuild['launch_url']);
     $selectedCanDownloadFromWeb = !$clientEnabled && $selectedBuildIsZip;
+=======
+    $selectedBuildCanDownloadOnWeb = $selectedBuild && !empty($selectedBuild['download_url']) && !$clientEnabled;
+>>>>>>> Stashed changes
     ?>
     <section class="game-detail">
         <article class="panel">
@@ -140,6 +151,7 @@ Page::header(t('nav.games'));
 
             <dl class="meta">
                 <div><dt>Builds</dt><dd><?= e($selectedGame['build_count'] ?? 0) ?></dd></div>
+                <div><dt>Visibilidad</dt><dd><?= e(Game::visibilityLabel((string) ($selectedGame['visibility'] ?? 'public'))) ?></dd></div>
                 <div><dt>Ultima build</dt><dd><?= e($selectedGame['latest_build_at'] ?? 'Sin builds') ?></dd></div>
                 <div><dt>Visibilidad</dt><dd><?= e(Game::visibilityLabel((string) ($selectedGame['visibility'] ?? 'public'))) ?></dd></div>
                 <div><dt>Creado</dt><dd><?= e($selectedGame['created_at']) ?></dd></div>
@@ -149,12 +161,19 @@ Page::header(t('nav.games'));
                 <?php if (!$user): ?>
                     <a class="button" href="<?= e(url('/login/')) ?>">Iniciar sesion</a>
                 <?php elseif ((int) $selectedGame['is_linked'] === 1): ?>
+<<<<<<< Updated upstream
                     <?php if ($selectedCanDownloadFromWeb): ?>
                         <a class="button" href="<?= e($selectedBuild['download_url']) ?>">Descargar build</a>
                     <?php elseif ($clientEnabled && $selectedBuildIsZip): ?>
                         <span class="muted">Disponible desde el cliente.</span>
                     <?php elseif ($selectedBuildIsExternal): ?>
                         <span class="muted">Se abre desde <?= e((string) ($selectedBuild['platform'] ?? 'plataforma externa')) ?> usando el cliente.</span>
+=======
+                    <?php if ($selectedBuildCanDownloadOnWeb): ?>
+                        <a class="button" href="<?= e($selectedBuild['download_url']) ?>">Descargar build</a>
+                    <?php elseif ($selectedBuild && !empty($selectedBuild['download_url']) && $clientEnabled): ?>
+                        <a class="button" href="<?= e(url('/client/')) ?>"><?= e(i18n_text('Instalar desde cliente', 'Install from client')) ?></a>
+>>>>>>> Stashed changes
                     <?php endif; ?>
                     <form method="post">
                         <?= Csrf::field() ?>
@@ -239,9 +258,13 @@ Page::header(t('nav.games'));
             <?php foreach ($games as $game): ?>
                 <?php
                 $build = $builds[(int) $game['id']] ?? null;
+<<<<<<< Updated upstream
                 $buildIsZip = $build && (($build['delivery_type'] ?? 'zip') === 'zip') && !empty($build['download_url']);
                 $buildIsExternal = $build && (($build['delivery_type'] ?? 'zip') === 'external_platform') && !empty($build['launch_url']);
                 $canDownloadFromWeb = !$clientEnabled && $buildIsZip;
+=======
+                $buildCanDownloadOnWeb = $build && !empty($build['download_url']) && !$clientEnabled;
+>>>>>>> Stashed changes
                 $description = (string) ($game['description'] ?? '');
                 $shortDescription = $description !== ''
                     ? (strlen($description) > 160 ? substr($description, 0, 157) . '...' : $description)
@@ -264,6 +287,7 @@ Page::header(t('nav.games'));
                     </dl>
                     <div class="actions">
                         <a class="button button--secondary" href="<?= e(url('/games/?game=' . rawurlencode((string) $game['slug']))) ?>">Ver juego</a>
+<<<<<<< Updated upstream
                         <?php if ($user && (int) $game['is_linked'] === 1 && $canDownloadFromWeb): ?>
                             <a class="button" href="<?= e($build['download_url']) ?>">Descargar</a>
                         <?php elseif ($user && (int) $game['is_linked'] === 1 && $clientEnabled && $buildIsZip): ?>
@@ -271,6 +295,13 @@ Page::header(t('nav.games'));
                         <?php elseif ($user && (int) $game['is_linked'] === 1 && $buildIsExternal): ?>
                             <span class="muted">Abre <?= e((string) ($build['platform'] ?? 'plataforma')) ?> desde el cliente</span>
                         <?php elseif ($user && $build): ?>
+=======
+                        <?php if ($user && (int) $game['is_linked'] === 1 && $buildCanDownloadOnWeb): ?>
+                            <a class="button" href="<?= e($build['download_url']) ?>">Descargar</a>
+                        <?php elseif ($user && (int) $game['is_linked'] === 1 && $build && !empty($build['download_url']) && $clientEnabled): ?>
+                            <a class="button" href="<?= e(url('/client/')) ?>"><?= e(i18n_text('Instalar desde cliente', 'Install from client')) ?></a>
+                        <?php elseif ($user && $build && !empty($build['download_url'])): ?>
+>>>>>>> Stashed changes
                             <form method="post">
                                 <?= Csrf::field() ?>
                                 <input type="hidden" name="action" value="obtain">

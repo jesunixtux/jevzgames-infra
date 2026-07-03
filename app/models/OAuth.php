@@ -339,6 +339,7 @@ final class OAuth
             'name' => (string) $game['name'],
             'slug' => (string) $game['slug'],
             'status' => (string) $game['status'],
+            'visibility' => (string) ($game['visibility'] ?? 'public'),
             'current_version' => $game['current_version'] ?? null,
             'config' => Game::decodeJson($game['config_json'] ?? null),
             'endpoints' => Game::decodeJson($game['endpoints_json'] ?? null),

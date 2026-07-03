@@ -60,6 +60,14 @@ if (request_is_post()) {
             redirect_to('/admin/?section=games');
         }
 
+        if ($action === 'update_game_visibility') {
+            $gameId = (int) ($_POST['game_id'] ?? 0);
+            Admin::updateGameVisibility($gameId, (string) ($_POST['visibility'] ?? 'public'));
+            ActivityLogger::info('admin_game_visibility_updated', ['user_id' => $userId, 'game_id' => $gameId]);
+            flash('message', 'Visibilidad de juego actualizada.');
+            redirect_to('/admin/?section=games');
+        }
+
         if ($action === 'approve_publish_request') {
             $requestId = (int) ($_POST['request_id'] ?? 0);
             $gameId = PublishRequest::approve($requestId, $userId);
@@ -384,13 +392,21 @@ Page::header('Admin');
                 <div class="field">
                     <label for="visibility">Visibilidad</label>
                     <select id="visibility" name="visibility">
+<<<<<<< Updated upstream
                         <?php foreach (Game::visibilityOptions() as $visibility): ?>
+=======
+                        <?php foreach (Admin::gameVisibilities() as $visibility): ?>
+>>>>>>> Stashed changes
                             <option value="<?= e($visibility) ?>" <?= (($editingGame['visibility'] ?? 'public') === $visibility) ? 'selected' : '' ?>>
                                 <?= e(Game::visibilityLabel($visibility)) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
+<<<<<<< Updated upstream
                     <p class="muted">No listado abre con URL directa. Privado solo dueño, Admin y Superroot.</p>
+=======
+                    <p class="muted">Publico aparece en catalogo; no listado abre por URL; privado queda para duenio/admin/superroot.</p>
+>>>>>>> Stashed changes
                 </div>
                 <div class="field">
                     <label for="current_version">Version actual</label>
@@ -480,6 +496,17 @@ Page::header('Admin');
                                         <?php endforeach; ?>
                                     </select>
                                     <button type="submit" class="button button--secondary">Cambiar</button>
+                                </form>
+                                <form method="post">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="update_game_visibility">
+                                    <input type="hidden" name="game_id" value="<?= e($game['id']) ?>">
+                                    <select name="visibility">
+                                        <?php foreach (Admin::gameVisibilities() as $visibility): ?>
+                                            <option value="<?= e($visibility) ?>" <?= (($game['visibility'] ?? 'public') === $visibility) ? 'selected' : '' ?>><?= e(Game::visibilityLabel($visibility)) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <button type="submit" class="button button--secondary">Visibilidad</button>
                                 </form>
                             </td>
                         </tr>
