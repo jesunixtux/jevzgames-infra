@@ -11,6 +11,9 @@ This update is for installations that already have JevzGames Infra installed.
 - Game developer and publisher metadata.
 - `developer-extern` role for third-party game publishers.
 - `/external-games/` section for third-party game publishing and configuration.
+- Third-party game owners can add ZIP, remote ZIP and external-platform builds from `/external-games/`.
+- Client achievement endpoints for launchers and Unity games.
+- Unity SDK package for launcher-compatible achievements and bottom-screen unlock notifications.
 - Superroot `extern-games-config` for an optional dedicated external-games database.
 - Superroot `panic reinstall`, which reapplies schema/seeds/migrations without deleting existing data.
 

@@ -1,4 +1,4 @@
-﻿# RacLauncher Beta 0.1.8 - JEVZGames / RacAccount
+﻿# RacLauncher Beta 0.1.9 - JEVZGames / RacAccount
 # Cambios:
 # - Flujo tipo Steam: si no hay sesion, muestra solo login.
 # - Si hay sesion guardada, entra directo a biblioteca.
@@ -7,6 +7,7 @@
 # - Botn volver/cerrar sesion.
 # - Biblioteca muestra solo juegos en posesion/licenciados.
 # - Estado visual de juego ejecutandose.
+# - Ventana de logros por juego y prueba de desbloqueo.
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -16,7 +17,7 @@ $ErrorActionPreference = "Stop"
 
 $AppName = "RacLauncher"
 $BaseUrl = "https://racacount.jevzgames.com"
-$AppVersion = "0.1.8-beta"
+$AppVersion = "0.1.9-beta"
 
 $AppData = Join-Path $env:APPDATA $AppName
 $GamesDir = Join-Path $AppData "games"
@@ -678,6 +679,7 @@ function Update-ActionButtons {
 
     if ($script:InstallBtn) { $script:InstallBtn.Enabled = $hasGame -and (-not $script:OfflineMode) -and $hasZipBuild }
     if ($script:PlayBtn) { $script:PlayBtn.Enabled = $hasGame -and ((($installed -and ((-not $script:OfflineMode) -or $offlinePlayable)) -or ((-not $script:OfflineMode) -and $hasExternalBuild))) }
+    if ($script:AchievementsBtn) { $script:AchievementsBtn.Enabled = $hasGame -and (-not $script:OfflineMode) }
 }
 
 function Load-InstalledMetadata($slug) {
@@ -851,6 +853,9 @@ function Do-Logout {
     Clear-LibraryCache
     $script:GamesList.Items.Clear()
     $script:Games = @()
+    if ($script:AchievementsForm -and -not $script:AchievementsForm.IsDisposed) { $script:AchievementsForm.Close() }
+    $script:Achievements = @()
+    $script:AchievementsCurrentGame = $null
     $script:UserBox.Text = ""
     $script:PassBox.Text = ""
     Set-Status "Sesion cerrada."
@@ -867,6 +872,167 @@ function Do-Play {
 
     $game = Selected-Game
     if ($game) { Launch-Game $game }
+}
+
+function Format-AchievementLine($achievement) {
+    $state = if (To-Bool $achievement.unlocked) { "Desbloqueado" } else { "Bloqueado" }
+    $points = if ($achievement.points) { [int]$achievement.points } else { 0 }
+    $progress = if ($achievement.progress_percent) { [double]$achievement.progress_percent } else { 0 }
+    $title = if ($achievement.title) { [string]$achievement.title } else { "Logro" }
+    return "$state | +$points pts | $progress% | $title"
+}
+
+function Refresh-AchievementsWindow {
+    if ($script:OfflineMode) { return }
+    if (-not $script:AchievementsList -or -not $script:AchievementsCurrentGame) { return }
+
+    $token = Get-Token
+    if (-not $token) { return }
+
+    $slug = Get-GameSlug $script:AchievementsCurrentGame
+    if ([string]::IsNullOrWhiteSpace($slug)) { return }
+
+    try {
+        $script:AchievementsStatusLabel.Text = "Cargando logros..."
+        $res = Api-Post "/api/client/achievements/list/" @{ game_slug = $slug } $token
+        if (-not $res.success) { throw $res.message }
+
+        $script:Achievements = @()
+        $script:AchievementsList.Items.Clear()
+
+        if ($res.data.achievements) {
+            foreach ($achievement in $res.data.achievements) {
+                $script:Achievements += $achievement
+                $script:AchievementsList.Items.Add((Format-AchievementLine $achievement)) | Out-Null
+            }
+        }
+
+        if ($script:Achievements.Count -eq 0) {
+            $script:AchievementsList.Items.Add("Este juego no tiene logros configurados.") | Out-Null
+        }
+
+        $script:AchievementsStatusLabel.Text = "Logros actualizados."
+    } catch {
+        $script:AchievementsStatusLabel.Text = "No se pudieron cargar los logros."
+        [System.Windows.Forms.MessageBox]::Show("No se pudieron cargar los logros.`r`n$($_.Exception.Message)", "Logros", "OK", "Error") | Out-Null
+    }
+}
+
+function Unlock-AchievementFromWindow {
+    if ($script:OfflineMode) { return }
+    if (-not $script:AchievementsCodeBox -or -not $script:AchievementsCurrentGame) { return }
+
+    $code = $script:AchievementsCodeBox.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($code)) {
+        [System.Windows.Forms.MessageBox]::Show("Escribe el codigo interno del logro para probar el desbloqueo.", "Logros", "OK", "Information") | Out-Null
+        return
+    }
+
+    $token = Get-Token
+    if (-not $token) { return }
+
+    $slug = Get-GameSlug $script:AchievementsCurrentGame
+    try {
+        $script:AchievementsStatusLabel.Text = "Desbloqueando logro..."
+        $res = Api-Post "/api/client/achievements/unlock/" @{
+            game_slug = $slug
+            achievement_code = $code
+            progress_data = @{ source = "raclauncher" }
+        } $token
+        if (-not $res.success) { throw $res.message }
+
+        if ($res.data.just_unlocked) {
+            [System.Windows.Forms.MessageBox]::Show("Logro desbloqueado: $($res.data.achievement.title)", "Logros", "OK", "Information") | Out-Null
+        } else {
+            [System.Windows.Forms.MessageBox]::Show("El logro ya estaba desbloqueado o no cambio de estado.", "Logros", "OK", "Information") | Out-Null
+        }
+
+        $script:AchievementsCodeBox.Text = ""
+        Refresh-AchievementsWindow
+    } catch {
+        $script:AchievementsStatusLabel.Text = "No se pudo desbloquear."
+        [System.Windows.Forms.MessageBox]::Show("No se pudo desbloquear el logro.`r`n$($_.Exception.Message)", "Logros", "OK", "Error") | Out-Null
+    }
+}
+
+function Open-AchievementsWindow {
+    if ($script:OfflineMode) {
+        [System.Windows.Forms.MessageBox]::Show("Los logros requieren conexion. En modo offline solo puedes abrir juegos instalados.", "Offline", "OK", "Information") | Out-Null
+        return
+    }
+
+    $game = Selected-Game
+    if (-not $game) { return }
+
+    if ($script:AchievementsForm -and -not $script:AchievementsForm.IsDisposed) {
+        $script:AchievementsCurrentGame = $game
+        $script:AchievementsForm.Text = "RacLauncher - Logros - $(Get-GameName $game)"
+        $script:AchievementsForm.Focus()
+        Refresh-AchievementsWindow
+        return
+    }
+
+    $achievements = New-Object System.Windows.Forms.Form
+    $achievements.Text = "RacLauncher - Logros - $(Get-GameName $game)"
+    $achievements.Size = New-Object System.Drawing.Size(760, 520)
+    $achievements.StartPosition = "CenterParent"
+    $achievements.BackColor = [System.Drawing.Color]::FromArgb(25,25,30)
+    $achievements.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+    $title = New-Object System.Windows.Forms.Label
+    $title.Text = "Logros de $(Get-GameName $game)"
+    $title.ForeColor = [System.Drawing.Color]::White
+    $title.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+    $title.Location = New-Object System.Drawing.Point(18, 16)
+    $title.Size = New-Object System.Drawing.Size(700, 30)
+    $achievements.Controls.Add($title)
+
+    $script:AchievementsList = New-Object System.Windows.Forms.ListBox
+    $script:AchievementsList.Location = New-Object System.Drawing.Point(20, 58)
+    $script:AchievementsList.Size = New-Object System.Drawing.Size(700, 285)
+    $script:AchievementsList.BackColor = [System.Drawing.Color]::FromArgb(38,38,45)
+    $script:AchievementsList.ForeColor = [System.Drawing.Color]::White
+    $script:AchievementsList.BorderStyle = "FixedSingle"
+    $achievements.Controls.Add($script:AchievementsList)
+
+    $hint = New-Object System.Windows.Forms.Label
+    $hint.Text = "Para pruebas, escribe el codigo interno configurado en Admin. La lista no expone codigos."
+    $hint.ForeColor = [System.Drawing.Color]::LightGray
+    $hint.Location = New-Object System.Drawing.Point(20, 356)
+    $hint.Size = New-Object System.Drawing.Size(700, 22)
+    $achievements.Controls.Add($hint)
+
+    $script:AchievementsCodeBox = New-Object System.Windows.Forms.TextBox
+    $script:AchievementsCodeBox.Location = New-Object System.Drawing.Point(20, 385)
+    $script:AchievementsCodeBox.Size = New-Object System.Drawing.Size(420, 26)
+    $achievements.Controls.Add($script:AchievementsCodeBox)
+
+    $unlockBtn = New-Object System.Windows.Forms.Button
+    $unlockBtn.Text = "Desbloquear"
+    $unlockBtn.Location = New-Object System.Drawing.Point(455, 382)
+    $unlockBtn.Size = New-Object System.Drawing.Size(120, 32)
+    $unlockBtn.Add_Click({ Unlock-AchievementFromWindow })
+    $achievements.Controls.Add($unlockBtn)
+
+    $refreshBtn = New-Object System.Windows.Forms.Button
+    $refreshBtn.Text = "Refrescar"
+    $refreshBtn.Location = New-Object System.Drawing.Point(590, 382)
+    $refreshBtn.Size = New-Object System.Drawing.Size(130, 32)
+    $refreshBtn.Add_Click({ Refresh-AchievementsWindow })
+    $achievements.Controls.Add($refreshBtn)
+
+    $script:AchievementsStatusLabel = New-Object System.Windows.Forms.Label
+    $script:AchievementsStatusLabel.Text = "Listo."
+    $script:AchievementsStatusLabel.ForeColor = [System.Drawing.Color]::LightGray
+    $script:AchievementsStatusLabel.Location = New-Object System.Drawing.Point(20, 428)
+    $script:AchievementsStatusLabel.Size = New-Object System.Drawing.Size(700, 22)
+    $achievements.Controls.Add($script:AchievementsStatusLabel)
+
+    $script:AchievementsForm = $achievements
+    $script:AchievementsCurrentGame = $game
+    $script:Achievements = @()
+    $achievements.Add_Shown({ Refresh-AchievementsWindow })
+    [void]$achievements.ShowDialog($form)
 }
 
 function Open-AppData {
@@ -1272,7 +1438,7 @@ $script:LibraryPanel.Controls.Add($script:GamesList)
 $actionsPanel = New-Object System.Windows.Forms.Panel
 $actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(35,35,42)
 $actionsPanel.Location = New-Object System.Drawing.Point(700, 125)
-$actionsPanel.Size = New-Object System.Drawing.Size(210, 210)
+$actionsPanel.Size = New-Object System.Drawing.Size(210, 260)
 $script:LibraryPanel.Controls.Add($actionsPanel)
 
 $actionTitle = New-Object System.Windows.Forms.Label
@@ -1304,6 +1470,12 @@ $script:MessagesBtn.Size = New-Object System.Drawing.Size(170, 36)
 $script:MessagesBtn.Add_Click({ Open-MessagesWindow })
 $actionsPanel.Controls.Add($script:MessagesBtn)
 
+$script:AchievementsBtn = New-Object System.Windows.Forms.Button
+$script:AchievementsBtn.Text = "Logros"
+$script:AchievementsBtn.Location = New-Object System.Drawing.Point(20, 196)
+$script:AchievementsBtn.Size = New-Object System.Drawing.Size(170, 36)
+$script:AchievementsBtn.Add_Click({ Open-AchievementsWindow })
+$actionsPanel.Controls.Add($script:AchievementsBtn)
 
 $progressLabel = New-Object System.Windows.Forms.Label
 $progressLabel.Text = "Descarga / instalacion"
@@ -1350,6 +1522,9 @@ $script:DownloadClient = $null
 $script:RunningGames = @{}
 $script:ChatConversations = @()
 $script:CurrentChatUserId = $null
+$script:Achievements = @()
+$script:AchievementsCurrentGame = $null
+$script:AchievementsForm = $null
 
 $script:GameStateTimer = New-Object System.Windows.Forms.Timer
 $script:GameStateTimer.Interval = 5000

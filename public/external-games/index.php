@@ -6,6 +6,7 @@ require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR 
 use App\Core\Page;
 use App\Models\ExternalGames;
 use App\Models\Game;
+use App\Models\GameBuild;
 use App\Security\Auth;
 use App\Security\Csrf;
 use App\Services\ActivityLogger;
@@ -20,6 +21,7 @@ $settings = ExternalGames::settings();
 $stats = ExternalGames::stats();
 $externalGames = [];
 $editingGame = null;
+$gameBuilds = [];
 $players = [];
 
 if (request_is_post()) {
@@ -36,6 +38,44 @@ if (request_is_post()) {
             redirect_to('/external-games/?edit_game=' . $externalGameId);
         }
 
+        if ($action === 'save_external_game_build_upload') {
+            $managed = ExternalGames::managedMainGame((int) ($_POST['external_game_id'] ?? 0), $userId, $canManageAll);
+            $input = $_POST;
+            $input['game_id'] = (int) $managed['main_game']['id'];
+            $buildId = GameBuild::saveUpload($input, $_FILES['build_zip'] ?? []);
+            ActivityLogger::info('external_game_build_saved', ['user_id' => $userId, 'build_id' => $buildId, 'external_game_id' => (int) ($_POST['external_game_id'] ?? 0)]);
+            flash('message', 'Build ZIP guardada.');
+            redirect_to('/external-games/?edit_game=' . (int) ($_POST['external_game_id'] ?? 0));
+        }
+
+        if ($action === 'save_external_game_build_remote') {
+            $managed = ExternalGames::managedMainGame((int) ($_POST['external_game_id'] ?? 0), $userId, $canManageAll);
+            $input = $_POST;
+            $input['game_id'] = (int) $managed['main_game']['id'];
+            $buildId = GameBuild::saveRemote($input);
+            ActivityLogger::info('external_remote_game_build_saved', ['user_id' => $userId, 'build_id' => $buildId, 'external_game_id' => (int) ($_POST['external_game_id'] ?? 0)]);
+            flash('message', 'Build remota guardada.');
+            redirect_to('/external-games/?edit_game=' . (int) ($_POST['external_game_id'] ?? 0));
+        }
+
+        if ($action === 'save_external_game_platform_build') {
+            $managed = ExternalGames::managedMainGame((int) ($_POST['external_game_id'] ?? 0), $userId, $canManageAll);
+            $input = $_POST;
+            $input['game_id'] = (int) $managed['main_game']['id'];
+            $buildId = GameBuild::saveExternalPlatform($input);
+            ActivityLogger::info('external_platform_game_build_saved', ['user_id' => $userId, 'build_id' => $buildId, 'external_game_id' => (int) ($_POST['external_game_id'] ?? 0)]);
+            flash('message', 'Version de plataforma externa guardada.');
+            redirect_to('/external-games/?edit_game=' . (int) ($_POST['external_game_id'] ?? 0));
+        }
+
+        if ($action === 'delete_external_game_build') {
+            $managed = ExternalGames::managedMainGameByBuild((int) ($_POST['build_id'] ?? 0), $userId, $canManageAll);
+            GameBuild::delete((int) ($_POST['build_id'] ?? 0));
+            ActivityLogger::info('external_game_build_deleted', ['user_id' => $userId, 'build_id' => (int) ($_POST['build_id'] ?? 0)]);
+            flash('message', 'Build eliminada.');
+            redirect_to('/external-games/?edit_game=' . (int) $managed['external_game']['id']);
+        }
+
         throw new RuntimeException('Accion no valida.');
     } catch (Throwable $exception) {
         flash('error', $exception->getMessage());
@@ -50,6 +90,8 @@ if ($settings['enabled'] && $settings['allow_publish'] && $settings['configured'
         if ($editGameId > 0) {
             $editingGame = ExternalGames::findGame($editGameId, $userId, $canManageAll);
             if ($editingGame !== null) {
+                $managed = ExternalGames::managedMainGame($editGameId, $userId, $canManageAll);
+                $gameBuilds = GameBuild::list((int) $managed['main_game']['id']);
                 $players = ExternalGames::playerRows($editGameId, $userId, $canManageAll);
             }
         }
@@ -159,6 +201,181 @@ Page::header(i18n_text('Juegos externos', 'External games'));
             </div>
         </form>
     </section>
+
+    <?php if ($editingGame): ?>
+        <section class="panel">
+            <div class="section-heading">
+                <div>
+                    <h2><?= e(i18n_text('Builds del juego', 'Game builds')) ?></h2>
+                    <p class="muted"><?= e(i18n_text('Sube un ZIP, registra una URL o apunta a Steam/otra plataforma para que el launcher pueda instalar o abrir el juego.', 'Upload a ZIP, register a URL or point to Steam/another platform so the launcher can install or open the game.')) ?></p>
+                </div>
+                <span class="status-pill"><?= e($editingGame['slug'] ?? '') ?></span>
+            </div>
+
+            <form class="form" method="post" enctype="multipart/form-data">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="action" value="save_external_game_build_upload">
+                <input type="hidden" name="external_game_id" value="<?= e($editingGame['id']) ?>">
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="external_build_version"><?= e(i18n_text('Version', 'Version')) ?></label>
+                        <input id="external_build_version" name="version" value="<?= e($editingGame['current_version'] ?? '0.1.0') ?>" maxlength="60" required>
+                    </div>
+                    <div class="field">
+                        <label for="external_build_channel"><?= e(i18n_text('Canal', 'Channel')) ?></label>
+                        <select id="external_build_channel" name="channel">
+                            <?php foreach (GameBuild::channels() as $channel): ?>
+                                <option value="<?= e($channel) ?>"><?= e($channel) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="external_build_executable_path"><?= e(i18n_text('Ejecutable dentro del ZIP', 'Executable inside ZIP')) ?></label>
+                        <input id="external_build_executable_path" name="executable_path" placeholder="Game.exe" maxlength="255" required>
+                    </div>
+                    <div class="field">
+                        <label for="external_build_zip"><?= e(i18n_text('Build .zip', 'Build .zip')) ?></label>
+                        <input id="external_build_zip" name="build_zip" type="file" accept=".zip,application/zip" required>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="external_build_notes"><?= e(i18n_text('Notas', 'Notes')) ?></label>
+                    <textarea id="external_build_notes" name="notes" rows="3"></textarea>
+                </div>
+                <div class="actions">
+                    <button type="submit"><?= e(i18n_text('Subir build ZIP', 'Upload ZIP build')) ?></button>
+                </div>
+            </form>
+
+            <details class="panel-lite">
+                <summary><?= e(i18n_text('Registrar build por URL', 'Register build by URL')) ?></summary>
+                <form class="form" method="post">
+                    <?= Csrf::field() ?>
+                    <input type="hidden" name="action" value="save_external_game_build_remote">
+                    <input type="hidden" name="external_game_id" value="<?= e($editingGame['id']) ?>">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="external_remote_version"><?= e(i18n_text('Version', 'Version')) ?></label>
+                            <input id="external_remote_version" name="version" maxlength="60" required>
+                        </div>
+                        <div class="field">
+                            <label for="external_remote_channel"><?= e(i18n_text('Canal', 'Channel')) ?></label>
+                            <select id="external_remote_channel" name="channel">
+                                <?php foreach (GameBuild::channels() as $channel): ?>
+                                    <option value="<?= e($channel) ?>"><?= e($channel) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="external_remote_executable_path"><?= e(i18n_text('Ejecutable dentro del ZIP', 'Executable inside ZIP')) ?></label>
+                            <input id="external_remote_executable_path" name="executable_path" placeholder="Game.exe" maxlength="255" required>
+                        </div>
+                        <div class="field">
+                            <label for="external_remote_file_path"><?= e(i18n_text('URL o ruta .zip', 'URL or .zip path')) ?></label>
+                            <input id="external_remote_file_path" name="file_path" placeholder="https://.../game.zip o /uploads/builds/game.zip" required>
+                        </div>
+                        <div class="field">
+                            <label for="external_remote_checksum">SHA-256</label>
+                            <input id="external_remote_checksum" name="checksum" maxlength="128">
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button type="submit" class="button button--secondary"><?= e(i18n_text('Guardar build remota', 'Save remote build')) ?></button>
+                    </div>
+                </form>
+            </details>
+
+            <details class="panel-lite">
+                <summary><?= e(i18n_text('Registrar plataforma externa', 'Register external platform')) ?></summary>
+                <form class="form" method="post">
+                    <?= Csrf::field() ?>
+                    <input type="hidden" name="action" value="save_external_game_platform_build">
+                    <input type="hidden" name="external_game_id" value="<?= e($editingGame['id']) ?>">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="external_platform_version"><?= e(i18n_text('Version', 'Version')) ?></label>
+                            <input id="external_platform_version" name="version" maxlength="60" required>
+                        </div>
+                        <div class="field">
+                            <label for="external_platform_channel"><?= e(i18n_text('Canal', 'Channel')) ?></label>
+                            <select id="external_platform_channel" name="channel">
+                                <?php foreach (GameBuild::channels() as $channel): ?>
+                                    <option value="<?= e($channel) ?>"><?= e($channel) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="external_platform_name"><?= e(i18n_text('Plataforma', 'Platform')) ?></label>
+                            <input id="external_platform_name" name="platform" value="steam" maxlength="60" required>
+                        </div>
+                        <div class="field">
+                            <label for="external_platform_app_id"><?= e(i18n_text('App ID externo', 'External App ID')) ?></label>
+                            <input id="external_platform_app_id" name="platform_app_id" placeholder="Steam AppID" maxlength="120">
+                        </div>
+                        <div class="field">
+                            <label for="external_platform_url"><?= e(i18n_text('URL de lanzamiento', 'Launch URL')) ?></label>
+                            <input id="external_platform_url" name="platform_url" placeholder="steam://run/480">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="external_platform_notes"><?= e(i18n_text('Notas', 'Notes')) ?></label>
+                        <textarea id="external_platform_notes" name="notes" rows="3"></textarea>
+                    </div>
+                    <div class="actions">
+                        <button type="submit" class="button button--secondary"><?= e(i18n_text('Guardar plataforma', 'Save platform')) ?></button>
+                    </div>
+                </form>
+            </details>
+
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th><?= e(i18n_text('Version', 'Version')) ?></th>
+                            <th><?= e(i18n_text('Canal', 'Channel')) ?></th>
+                            <th><?= e(i18n_text('Tipo', 'Type')) ?></th>
+                            <th><?= e(i18n_text('Destino', 'Target')) ?></th>
+                            <th><?= e(i18n_text('Ejecutable', 'Executable')) ?></th>
+                            <th><?= e(i18n_text('Accion', 'Action')) ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($gameBuilds === []): ?>
+                            <tr><td colspan="6"><?= e(i18n_text('No hay builds para este juego.', 'There are no builds for this game.')) ?></td></tr>
+                        <?php endif; ?>
+                        <?php foreach ($gameBuilds as $build): ?>
+                            <tr>
+                                <td><?= e($build['version']) ?></td>
+                                <td><?= e($build['channel']) ?></td>
+                                <td>
+                                    <?= e((string) ($build['delivery_type'] ?? 'zip')) ?>
+                                    <?php if (!empty($build['platform'])): ?>
+                                        <br><span class="muted"><?= e((string) $build['platform']) ?> <?= e((string) ($build['platform_app_id'] ?? '')) ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if (!empty($build['download_url'])): ?>
+                                        <a href="<?= e($build['download_url']) ?>" target="_blank" rel="noreferrer"><?= e(i18n_text('Descargar', 'Download')) ?></a>
+                                    <?php elseif (!empty($build['launch_url'])): ?>
+                                        <a href="<?= e($build['launch_url']) ?>" target="_blank" rel="noreferrer"><?= e(i18n_text('Abrir plataforma', 'Open platform')) ?></a>
+                                    <?php endif; ?>
+                                </td>
+                                <td><code><?= e($build['executable_path'] ?? '') ?></code></td>
+                                <td>
+                                    <form method="post">
+                                        <?= Csrf::field() ?>
+                                        <input type="hidden" name="action" value="delete_external_game_build">
+                                        <input type="hidden" name="build_id" value="<?= e($build['id']) ?>">
+                                        <button type="submit" class="button button--secondary"><?= e(i18n_text('Eliminar', 'Delete')) ?></button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    <?php endif; ?>
 
     <section class="panel">
         <h2><?= e(i18n_text('Lista de juegos externos', 'External game list')) ?></h2>

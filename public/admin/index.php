@@ -206,6 +206,8 @@ if (request_is_post()) {
 $stats = Admin::dashboardStats();
 $users = Admin::users();
 $games = Admin::games();
+$internalGames = array_values(array_filter($games, static fn (array $game): bool => (string) ($game['source_type'] ?? 'internal') !== 'external'));
+$externalAdminGames = array_values(array_filter($games, static fn (array $game): bool => (string) ($game['source_type'] ?? 'internal') === 'external'));
 $gameBuilds = GameBuild::list();
 $publishStatus = (string) ($_GET['publish_status'] ?? 'pending');
 $publishRequests = PublishRequest::all($publishStatus);
@@ -448,7 +450,8 @@ Page::header('Admin');
     </section>
 
     <section class="panel">
-        <h2>Juegos registrados</h2>
+        <h2>Juegos internos</h2>
+        <p class="muted">Juegos publicados y mantenidos directamente por esta infraestructura.</p>
         <div class="table-wrap">
             <table class="data-table">
                 <thead>
@@ -459,16 +462,15 @@ Page::header('Admin');
                         <th>Version</th>
                         <th>Estado</th>
                         <th>Visibilidad</th>
-                        <th>Origen</th>
                         <th>BD dedicada</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if ($games === []): ?>
-                        <tr><td colspan="9">No hay juegos registrados.</td></tr>
+                    <?php if ($internalGames === []): ?>
+                        <tr><td colspan="8">No hay juegos internos registrados.</td></tr>
                     <?php endif; ?>
-                    <?php foreach ($games as $game): ?>
+                    <?php foreach ($internalGames as $game): ?>
                         <?php $databaseStatus = GameDatabase::publicStatusFromGame($game); ?>
                         <tr>
                             <td><strong><?= e($game['name']) ?></strong></td>
@@ -484,7 +486,88 @@ Page::header('Admin');
                             <td><?= e($game['current_version'] ?? '') ?></td>
                             <td><?= e($game['status']) ?></td>
                             <td><?= e(Game::visibilityLabel((string) ($game['visibility'] ?? 'public'))) ?></td>
-                            <td><?= e((string) ($game['source_type'] ?? 'internal')) ?></td>
+                            <td>
+                                <?= $databaseStatus['enabled'] ? 'Activa' : 'Inactiva' ?><br>
+                                <span class="muted"><?= $databaseStatus['configured'] ? 'Configurada' : 'Sin configurar' ?></span>
+                            </td>
+                            <td class="table-actions">
+                                <a class="button button--secondary" href="<?= e(url('/admin/?section=games&edit_game=' . (int) $game['id'])) ?>">Editar</a>
+                                <form method="post">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="test_game_database">
+                                    <input type="hidden" name="game_id" value="<?= e($game['id']) ?>">
+                                    <button type="submit" class="button button--secondary">Probar BD</button>
+                                </form>
+                                <form method="post">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="update_game_status">
+                                    <input type="hidden" name="game_id" value="<?= e($game['id']) ?>">
+                                    <select name="status">
+                                        <?php foreach (Admin::gameStatuses() as $status): ?>
+                                            <option value="<?= e($status) ?>" <?= $game['status'] === $status ? 'selected' : '' ?>><?= e($status) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <button type="submit" class="button button--secondary">Cambiar</button>
+                                </form>
+                                <form method="post">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="update_game_visibility">
+                                    <input type="hidden" name="game_id" value="<?= e($game['id']) ?>">
+                                    <select name="visibility">
+                                        <?php foreach (Admin::gameVisibilities() as $visibility): ?>
+                                            <option value="<?= e($visibility) ?>" <?= (($game['visibility'] ?? 'public') === $visibility) ? 'selected' : '' ?>><?= e(Game::visibilityLabel($visibility)) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <button type="submit" class="button button--secondary">Visibilidad</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Juegos externos</h2>
+        <p class="muted">Juegos de terceros creados desde el apartado de desarrolladores externos.</p>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Juego</th>
+                        <th>Slug</th>
+                        <th>Equipo</th>
+                        <th>Version</th>
+                        <th>Estado</th>
+                        <th>Visibilidad</th>
+                        <th>BD dedicada</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($externalAdminGames === []): ?>
+                        <tr><td colspan="8">No hay juegos externos registrados.</td></tr>
+                    <?php endif; ?>
+                    <?php foreach ($externalAdminGames as $game): ?>
+                        <?php $databaseStatus = GameDatabase::publicStatusFromGame($game); ?>
+                        <tr>
+                            <td>
+                                <strong><?= e($game['name']) ?></strong><br>
+                                <span class="muted">External ID: <?= e($game['external_game_id'] ?? '') ?></span>
+                            </td>
+                            <td><code><?= e($game['slug']) ?></code></td>
+                            <td>
+                                <?php if (!empty($game['developer_name'])): ?>
+                                    <?= e($game['developer_name']) ?><br>
+                                <?php endif; ?>
+                                <?php if (!empty($game['publisher_name'])): ?>
+                                    <span class="muted"><?= e($game['publisher_name']) ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?= e($game['current_version'] ?? '') ?></td>
+                            <td><?= e($game['status']) ?></td>
+                            <td><?= e(Game::visibilityLabel((string) ($game['visibility'] ?? 'public'))) ?></td>
                             <td>
                                 <?= $databaseStatus['enabled'] ? 'Activa' : 'Inactiva' ?><br>
                                 <span class="muted"><?= $databaseStatus['configured'] ? 'Configurada' : 'Sin configurar' ?></span>

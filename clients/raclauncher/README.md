@@ -1,4 +1,4 @@
-# RacLauncher Beta 0.1.8
+# RacLauncher Beta 0.1.9
 
 ## Cambios principales
 
@@ -13,6 +13,8 @@
 - Refresca presencia `in_game` cada 5 segundos mientras el juego esta abierto.
 - Al cerrar el juego, vuelve a presencia `online`.
 - Agrega ventana de Mensajes con polling cada 10 segundos.
+- Agrega ventana de Logros por juego usando `/api/client/achievements/list/`.
+- Permite probar desbloqueos con `/api/client/achievements/unlock/`; la lista visible no expone codigos internos.
 
 ## Como probar
 
@@ -26,6 +28,7 @@
 8. Cierra el juego.
 9. En unos segundos debe volver a Cerrado/online.
 10. Abre `Mensajes` para probar conversaciones privadas.
+11. Selecciona un juego, abre `Logros` y verifica progreso/desbloqueados.
 
 ## Modo offline
 

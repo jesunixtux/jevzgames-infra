@@ -92,6 +92,23 @@ Page::header(i18n_text('Tutoriales', 'Tutorials'));
     </ol>
 </section>
 
+<section class="panel">
+    <h2><?= e(i18n_text('Unity SDK y launcher', 'Unity SDK and launcher')) ?></h2>
+    <p class="muted"><?= e(i18n_text('El paquete SDK permite que un juego iniciado por el cliente tipo Steam lea el token del launcher, marque presencia y desbloquee logros con notificacion inferior en pantalla.', 'The SDK package lets a game launched by the Steam-like client read the launcher token, set presence and unlock achievements with a bottom-screen notification.')) ?></p>
+    <ol class="list">
+        <li><?= e(i18n_text('Importa sdks/unity/JevzGamesApi.unitypackage en Unity.', 'Import sdks/unity/JevzGamesApi.unitypackage in Unity.')) ?></li>
+        <li><?= e(i18n_text('Agrega JevzGamesLauncherBridge a un GameObject de la primera escena.', 'Add JevzGamesLauncherBridge to a GameObject in the first scene.')) ?></li>
+        <li><?= e(i18n_text('El launcher debe abrir el juego con --jevzgames-api, --jevzgames-token y --jevzgames-game, o con variables JEVZGAMES_API_BASE, JEVZGAMES_CLIENT_TOKEN y JEVZGAMES_GAME_SLUG.', 'The launcher should open the game with --jevzgames-api, --jevzgames-token and --jevzgames-game, or with JEVZGAMES_API_BASE, JEVZGAMES_CLIENT_TOKEN and JEVZGAMES_GAME_SLUG variables.')) ?></li>
+        <li><?= e(i18n_text('Desde el juego llama UnlockAchievement con el codigo configurado en Admin; el launcher/API responde sin exponer ese codigo en la UI.', 'From the game call UnlockAchievement with the code configured in Admin; the launcher/API response does not expose that code in the UI.')) ?></li>
+    </ol>
+    <pre class="code-view">using JevzGames.Api;
+
+public void OnFirstRun()
+{
+    JevzGamesApiClient.Instance.UnlockAchievement("first_run");
+}</pre>
+</section>
+
 <section class="grid profile-grid">
     <article class="panel">
         <h2><?= e(i18n_text('Endpoints developer', 'Developer endpoints')) ?></h2>

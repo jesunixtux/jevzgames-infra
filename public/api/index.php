@@ -40,6 +40,8 @@ if (Auth::hasRole(['developer', 'developer-extern', 'admin', 'superroot'])) {
         url('/api/client/redeem/'),
         url('/api/client/presence/'),
         url('/api/client/presence/status/'),
+        url('/api/client/achievements/list/'),
+        url('/api/client/achievements/unlock/'),
         url('/api/client/messages/conversations/'),
         url('/api/client/messages/thread/'),
         url('/api/client/messages/send/'),

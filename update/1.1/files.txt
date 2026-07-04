@@ -13,10 +13,14 @@ app/models/GameBuild.php
 app/models/PlatformSettings.php
 app/models/PublishRequest.php
 app/models/Superroot.php
+clients/raclauncher/RacLauncher.ps1
+clients/raclauncher/README.md
 database/schema.sql
 database/seeds.sql
 docs/api.md
 public/admin/index.php
+public/api/client/achievements/list/index.php
+public/api/client/achievements/unlock/index.php
 public/api/index.php
 public/api/status/index.php
 public/external-games/index.php
@@ -26,5 +30,8 @@ public/library/index.php
 public/publish-on-games/index.php
 public/superroot/index.php
 public/tutorials/index.php
+sdks/unity/README.md
+sdks/unity/JevzGamesApi.unitypackage
+sdks/unity/JevzGamesApi/
 update/1.1/README.md
 update/1.1/update.php

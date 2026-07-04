@@ -365,6 +365,82 @@ final class ExternalGames
         return $stmt->fetchAll();
     }
 
+    public static function managedMainGame(int $externalGameId, int $userId, bool $canManageAll = false): array
+    {
+        $externalGame = self::findGame($externalGameId, $userId, $canManageAll);
+        if ($externalGame === null) {
+            throw new RuntimeException('Juego externo no encontrado.');
+        }
+
+        $mainGameId = (int) ($externalGame['main_game_id'] ?? 0);
+        if ($mainGameId <= 0) {
+            $mainGameId = self::syncMainGame([
+                ...$externalGame,
+                'id' => (int) $externalGame['id'],
+                'owner_user_id' => (int) $externalGame['owner_user_id'],
+                'main_game_id' => null,
+            ]);
+
+            $update = self::pdo()->prepare('UPDATE external_games SET main_game_id = :main_game_id WHERE id = :id');
+            $update->execute([
+                'id' => (int) $externalGame['id'],
+                'main_game_id' => $mainGameId,
+            ]);
+            $externalGame['main_game_id'] = $mainGameId;
+        }
+
+        Game::ensureVisibilityColumn();
+        $stmt = Database::pdo()->prepare(
+            'SELECT *
+             FROM games
+             WHERE id = :id
+               AND source_type = "external"
+               AND external_game_id = :external_game_id
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'id' => $mainGameId,
+            'external_game_id' => (int) $externalGame['id'],
+        ]);
+        $mainGame = $stmt->fetch();
+        if (!is_array($mainGame)) {
+            throw new RuntimeException('No se encontro el registro principal de este juego externo.');
+        }
+
+        return [
+            'external_game' => $externalGame,
+            'main_game' => $mainGame,
+        ];
+    }
+
+    public static function managedMainGameByBuild(int $buildId, int $userId, bool $canManageAll = false): array
+    {
+        if ($buildId <= 0) {
+            throw new RuntimeException('Build invalida.');
+        }
+
+        GameBuild::ensureTables();
+        Game::ensureVisibilityColumn();
+        $stmt = Database::pdo()->prepare(
+            'SELECT b.*, g.external_game_id
+             FROM game_builds b
+             INNER JOIN games g ON g.id = b.game_id
+             WHERE b.id = :build_id
+               AND g.source_type = "external"
+             LIMIT 1'
+        );
+        $stmt->execute(['build_id' => $buildId]);
+        $build = $stmt->fetch();
+        if (!is_array($build) || (int) ($build['external_game_id'] ?? 0) <= 0) {
+            throw new RuntimeException('Build externa no encontrada.');
+        }
+
+        $managed = self::managedMainGame((int) $build['external_game_id'], $userId, $canManageAll);
+        $managed['build'] = $build;
+
+        return $managed;
+    }
+
     public static function statuses(): array
     {
         return self::STATUSES;

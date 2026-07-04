@@ -335,6 +335,8 @@ Incluye endpoints y politica local offline:
     "me": "/api/client/me/",
     "library": "/api/client/library/",
     "presence": "/api/client/presence/",
+    "achievements_list": "/api/client/achievements/list/",
+    "achievements_unlock": "/api/client/achievements/unlock/",
     "messages_conversations": "/api/client/messages/conversations/"
   },
   "offline_cache": {
@@ -472,6 +474,102 @@ Modo offline:
 - Cache local recomendada: `session.json`, `library-cache.json`, `games/<slug>/installed.json`.
 - No guardar contrasenas localmente.
 - Si `delivery_type=external_platform`, el launcher debe abrir `launch_url` online y no guardarlo como instalacion offline.
+
+### GET|POST `/api/client/achievements/list/`
+
+Lista los logros del juego para el usuario autenticado con token del launcher. Requiere que el juego este en `owned_games`.
+
+Header:
+
+```text
+Authorization: Bearer jvg_ct_...
+```
+
+Request:
+
+```json
+{
+  "game_slug": "jumpfall"
+}
+```
+
+Respuesta:
+
+```json
+{
+  "success": true,
+  "data": {
+    "game": {
+      "id": 1,
+      "name": "JumpFall",
+      "slug": "jumpfall"
+    },
+    "achievements": [
+      {
+        "id": 10,
+        "title": "First run",
+        "description": "Open the game once.",
+        "image_url": "http://jevzgames.local/uploads/achievements/first.png",
+        "points": 10,
+        "unlocked": false,
+        "progress_percent": 0
+      }
+    ]
+  }
+}
+```
+
+Este endpoint no devuelve el codigo interno del logro para que el launcher pueda mostrar la UI sin exponerlo.
+
+### POST `/api/client/achievements/unlock/`
+
+Desbloquea un logro desde un juego lanzado por el cliente. El juego manda el codigo configurado en Admin; la respuesta trae datos listos para un toast tipo Steam.
+
+Header:
+
+```text
+Authorization: Bearer jvg_ct_...
+```
+
+Body:
+
+```json
+{
+  "game_slug": "jumpfall",
+  "achievement_code": "first_run",
+  "progress_data": {
+    "source": "unity"
+  }
+}
+```
+
+Respuesta:
+
+```json
+{
+  "success": true,
+  "data": {
+    "just_unlocked": true,
+    "achievement": {
+      "title": "First run",
+      "description": "Open the game once.",
+      "image_url": "http://jevzgames.local/uploads/achievements/first.png",
+      "points": 10,
+      "unlocked": true
+    },
+    "toast": {
+      "enabled": true,
+      "position": "bottom",
+      "title": "First run",
+      "description": "Open the game once.",
+      "image_url": "http://jevzgames.local/uploads/achievements/first.png",
+      "points": 10
+    }
+  }
+}
+```
+
+El SDK Unity en `sdks/unity/JevzGamesApi.unitypackage` usa estos endpoints cuando el launcher pasa `--jevzgames-api`, `--jevzgames-token` y `--jevzgames-game`.
 
 ### POST `/api/client/obtain-game/`
 

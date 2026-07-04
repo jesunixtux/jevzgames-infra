@@ -27,6 +27,9 @@ La primera fase deja una base funcional y simple:
 - Inventario con imagenes, codigos canjeables reales, licencias de juegos y pagina `/redeem/`.
 - Comunidad, mensajes estilo chat, notificaciones por sesion y perfiles publicos con presencia online/jugando.
 - Publish on Games, Workshop y cliente tipo Steam configurables desde Superroot.
+- Juegos externos con base dedicada opcional, builds propias y versiones que abren Steam u otra plataforma.
+- APIs de cliente para biblioteca, presencia, mensajes y logros del launcher.
+- SDK Unity importable para usar las APIs del launcher y mostrar desbloqueos de logros en pantalla.
 - Esquema SQL preparado para usuarios, juegos, roles, codigos, soporte, integraciones y API keys.
 
 ## Requisitos
@@ -116,6 +119,8 @@ public/
   api/achievements/list/index.php
   api/achievements/progress/index.php
   api/achievements/unlock/index.php
+  api/client/achievements/list/index.php
+  api/client/achievements/unlock/index.php
   oauth/authorize/index.php
   admin/index.php
   supporter/index.php
@@ -133,6 +138,10 @@ docs/
   arquitectura.md
   instalacion.md
   api.md
+sdks/
+  unity/
+    JevzGamesApi.unitypackage
+    JevzGamesApi/
 ```
 
 ## Reglas del proyecto
@@ -217,6 +226,32 @@ Permite:
 
 El boton manual de vincular queda reservado a `admin` y `superroot`. Los jugadores normales se vinculan al iniciar sesion desde una app compatible o al obtener un juego instalable.
 Si el cliente tipo Steam esta activo en Superroot, la web no muestra enlaces directos para descargar ZIP de juegos; los juegos con build se instalan y actualizan desde el cliente.
+
+## Launcher y Unity
+
+El cliente tipo Steam usa token Bearer `jvg_ct_...` para login, biblioteca, presencia, mensajes y logros. Los juegos iniciados desde el launcher pueden recibir contexto por argumentos:
+
+```text
+--jevzgames-api=http://jevzgames.local
+--jevzgames-token=jvg_ct_...
+--jevzgames-game=slug-del-juego
+```
+
+Tambien se aceptan variables de entorno `JEVZGAMES_API_BASE`, `JEVZGAMES_CLIENT_TOKEN` y `JEVZGAMES_GAME_SLUG`.
+
+El paquete Unity esta en:
+
+```text
+sdks/unity/JevzGamesApi.unitypackage
+```
+
+Importalo, agrega `JevzGamesLauncherBridge` en la primera escena y desbloquea logros desde el juego:
+
+```csharp
+JevzGames.Api.JevzGamesApiClient.Instance.UnlockAchievement("first_run");
+```
+
+Cuando el backend confirma un desbloqueo nuevo, el SDK muestra una notificacion en la parte inferior de la pantalla.
 
 La biblioteca del usuario vive en:
 

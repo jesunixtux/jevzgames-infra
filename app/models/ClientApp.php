@@ -244,6 +244,47 @@ final class ClientApp
         return self::presencePayload($presence);
     }
 
+    public static function achievements(int $userId, string $gameSlug = '', int $gameId = 0): array
+    {
+        self::ensureEnabled();
+        $game = self::resolvePlayableGame($userId, $gameSlug, $gameId);
+
+        return [
+            'game' => self::clientGameSummary($game),
+            'achievements' => array_map(
+                static fn (array $achievement): array => self::clientAchievementPayload($achievement),
+                Achievement::listForPlayer((int) $game['id'], $userId)
+            ),
+        ];
+    }
+
+    public static function unlockAchievement(int $userId, string $gameSlug, string $code, array $progress = []): array
+    {
+        self::ensureEnabled();
+        $game = self::resolvePlayableGame($userId, $gameSlug, 0);
+        $code = strtolower(trim($code));
+        if ($code === '') {
+            throw new RuntimeException('achievement_code es requerido.');
+        }
+
+        $result = Achievement::recordProgress((int) $game['id'], $userId, $code, 1, 'unlock', $progress);
+        $achievement = self::clientAchievementPayload($result['achievement'] ?? []);
+
+        return [
+            'game' => self::clientGameSummary($game),
+            'achievement' => $achievement,
+            'just_unlocked' => (bool) ($result['just_unlocked'] ?? false),
+            'toast' => [
+                'enabled' => (bool) ($result['just_unlocked'] ?? false),
+                'position' => 'bottom',
+                'title' => $achievement['title'] ?? '',
+                'description' => $achievement['description'] ?? null,
+                'image_url' => $achievement['image_url'] ?? null,
+                'points' => $achievement['points'] ?? 0,
+            ],
+        ];
+    }
+
     public static function revoke(string $token): void
     {
         self::ensureTables();
@@ -461,7 +502,7 @@ final class ClientApp
         return null;
     }
 
-    private static function userCanPlayGame(int $userId, int $gameId): bool
+    public static function userCanPlayGame(int $userId, int $gameId): bool
     {
         if ($userId <= 0 || $gameId <= 0) {
             return false;
@@ -485,6 +526,81 @@ final class ClientApp
         ]);
 
         return (int) $stmt->fetchColumn() > 0;
+    }
+
+    private static function resolvePlayableGame(int $userId, string $gameSlug = '', int $gameId = 0): array
+    {
+        Game::ensureVisibilityColumn();
+        $params = [];
+        $where = '';
+
+        if (trim($gameSlug) !== '') {
+            $where = 'g.slug = :slug';
+            $params['slug'] = strtolower(trim($gameSlug));
+        } elseif ($gameId > 0) {
+            $where = 'g.id = :game_id';
+            $params['game_id'] = $gameId;
+        } else {
+            throw new RuntimeException('Debes indicar game_slug o game_id.');
+        }
+
+        $stmt = Database::pdo()->prepare(
+            'SELECT g.*
+             FROM games g
+             WHERE ' . $where . '
+               AND g.status IN ("development", "playtest", "beta", "published")
+             LIMIT 1'
+        );
+        $stmt->execute($params);
+        $game = $stmt->fetch();
+        if (!is_array($game) || !self::userCanPlayGame($userId, (int) $game['id'])) {
+            throw new RuntimeException('El juego no esta en tu biblioteca.');
+        }
+
+        return $game;
+    }
+
+    private static function clientGameSummary(array $game): array
+    {
+        return [
+            'id' => (int) $game['id'],
+            'name' => (string) $game['name'],
+            'slug' => (string) $game['slug'],
+            'status' => (string) $game['status'],
+            'current_version' => $game['current_version'] ?? null,
+        ];
+    }
+
+    private static function clientAchievementPayload(array $achievement): array
+    {
+        $imagePath = $achievement['image_path'] ?? null;
+        $lockedImagePath = $achievement['locked_image_path'] ?? null;
+
+        return [
+            'id' => (int) ($achievement['id'] ?? 0),
+            'title' => (string) ($achievement['title'] ?? ''),
+            'description' => $achievement['description'] ?? null,
+            'image_path' => $imagePath,
+            'image_url' => self::assetUrl($imagePath),
+            'locked_image_path' => $lockedImagePath,
+            'locked_image_url' => self::assetUrl($lockedImagePath),
+            'points' => (int) ($achievement['points'] ?? 0),
+            'goal_value' => (float) ($achievement['goal_value'] ?? 1),
+            'progress_value' => (float) ($achievement['progress_value'] ?? 0),
+            'progress_percent' => (float) ($achievement['progress_percent'] ?? 0),
+            'unlocked' => (bool) ($achievement['unlocked'] ?? false),
+            'unlocked_at' => $achievement['unlocked_at'] ?? null,
+        ];
+    }
+
+    private static function assetUrl(mixed $path): ?string
+    {
+        $path = trim((string) ($path ?? ''));
+        if ($path === '') {
+            return null;
+        }
+
+        return filter_var($path, FILTER_VALIDATE_URL) ? $path : \url($path);
     }
 
     private static function hashToken(string $token): string

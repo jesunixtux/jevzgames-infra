@@ -442,6 +442,8 @@ final class PlatformSettings
                 'license_check' => \url('/api/game-license/check/'),
                 'presence' => \url('/api/client/presence/'),
                 'presence_status' => \url('/api/client/presence/status/'),
+                'achievements_list' => \url('/api/client/achievements/list/'),
+                'achievements_unlock' => \url('/api/client/achievements/unlock/'),
                 'messages_conversations' => \url('/api/client/messages/conversations/'),
                 'messages_thread' => \url('/api/client/messages/thread/'),
                 'messages_send' => \url('/api/client/messages/send/'),
