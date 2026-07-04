@@ -392,25 +392,25 @@ Page::header('Admin');
                 <div class="field">
                     <label for="visibility">Visibilidad</label>
                     <select id="visibility" name="visibility">
-<<<<<<< Updated upstream
                         <?php foreach (Game::visibilityOptions() as $visibility): ?>
-=======
-                        <?php foreach (Admin::gameVisibilities() as $visibility): ?>
->>>>>>> Stashed changes
                             <option value="<?= e($visibility) ?>" <?= (($editingGame['visibility'] ?? 'public') === $visibility) ? 'selected' : '' ?>>
                                 <?= e(Game::visibilityLabel($visibility)) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
-<<<<<<< Updated upstream
-                    <p class="muted">No listado abre con URL directa. Privado solo dueño, Admin y Superroot.</p>
-=======
                     <p class="muted">Publico aparece en catalogo; no listado abre por URL; privado queda para duenio/admin/superroot.</p>
->>>>>>> Stashed changes
                 </div>
                 <div class="field">
                     <label for="current_version">Version actual</label>
                     <input id="current_version" name="current_version" value="<?= e($editingGame['current_version'] ?? '') ?>" maxlength="60">
+                </div>
+                <div class="field">
+                    <label for="developer_name">Desarrolladora</label>
+                    <input id="developer_name" name="developer_name" value="<?= e($editingGame['developer_name'] ?? '') ?>" maxlength="140" placeholder="Opcional">
+                </div>
+                <div class="field">
+                    <label for="publisher_name">Publisher</label>
+                    <input id="publisher_name" name="publisher_name" value="<?= e($editingGame['publisher_name'] ?? '') ?>" maxlength="140" placeholder="Opcional">
                 </div>
             </div>
 
@@ -455,25 +455,36 @@ Page::header('Admin');
                     <tr>
                         <th>Juego</th>
                         <th>Slug</th>
+                        <th>Equipo</th>
                         <th>Version</th>
                         <th>Estado</th>
                         <th>Visibilidad</th>
+                        <th>Origen</th>
                         <th>BD dedicada</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($games === []): ?>
-                        <tr><td colspan="7">No hay juegos registrados.</td></tr>
+                        <tr><td colspan="9">No hay juegos registrados.</td></tr>
                     <?php endif; ?>
                     <?php foreach ($games as $game): ?>
                         <?php $databaseStatus = GameDatabase::publicStatusFromGame($game); ?>
                         <tr>
                             <td><strong><?= e($game['name']) ?></strong></td>
                             <td><code><?= e($game['slug']) ?></code></td>
+                            <td>
+                                <?php if (!empty($game['developer_name'])): ?>
+                                    <?= e($game['developer_name']) ?><br>
+                                <?php endif; ?>
+                                <?php if (!empty($game['publisher_name'])): ?>
+                                    <span class="muted"><?= e($game['publisher_name']) ?></span>
+                                <?php endif; ?>
+                            </td>
                             <td><?= e($game['current_version'] ?? '') ?></td>
                             <td><?= e($game['status']) ?></td>
                             <td><?= e(Game::visibilityLabel((string) ($game['visibility'] ?? 'public'))) ?></td>
+                            <td><?= e((string) ($game['source_type'] ?? 'internal')) ?></td>
                             <td>
                                 <?= $databaseStatus['enabled'] ? 'Activa' : 'Inactiva' ?><br>
                                 <span class="muted"><?= $databaseStatus['configured'] ? 'Configurada' : 'Sin configurar' ?></span>

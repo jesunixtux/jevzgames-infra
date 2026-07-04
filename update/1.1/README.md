@@ -1,60 +1,37 @@
-# JevzGames Update 1.1
+# JevzGames Infra Update 1.1
 
-<<<<<<< Updated upstream
-This update adds launcher-oriented distribution controls:
+This update is for installations that already have JevzGames Infra installed.
 
-- game visibility: `public`, `unlisted`, `private`
-- external platform builds with `launch_url`
-- ZIP downloads hidden from web pages when the Steam-like client is enabled
-- launcher flow where licenses are obtained from the web and the client only installs, updates or opens games
-=======
-This update adds game visibility controls for existing installations.
+## What It Adds
 
-## What Changes
-
-- Adds `games.visibility` with values:
-  - `public`: visible in catalog and accessible by URL.
-  - `unlisted`: hidden from catalog, accessible by direct URL.
-  - `private`: hidden from catalog and direct public access; available to the owner and admin/superroot.
-- Adds Admin controls to edit visibility.
-- Keeps owned/licensed games in launcher/library responses.
->>>>>>> Stashed changes
+- Cleaner launcher/client APIs and offline metadata.
+- Web ZIP download is hidden when the Steam-like client is enabled.
+- External platform builds, such as Steam launch URLs.
+- Public/unlisted/private game visibility.
+- Game developer and publisher metadata.
+- `developer-extern` role for third-party game publishers.
+- `/external-games/` section for third-party game publishing and configuration.
+- Superroot `extern-games-config` for an optional dedicated external-games database.
+- Superroot `panic reinstall`, which reapplies schema/seeds/migrations without deleting existing data.
 
 ## How To Apply
 
-1. Backup the database and current installation folder.
-2. Copy the updated repository files over the existing installation.
-<<<<<<< Updated upstream
-3. Keep these existing local paths from the old installation:
+1. Back up the current installation and database.
+2. Copy the new repository files over the installed code.
+3. Keep these paths from the existing server:
    - `app/config/config.php`
    - `storage/`
    - `public/uploads/`
    - `phpmailer/`
-=======
-3. Keep local paths from the old installation:
-   - `app/config/config.php`
-   - `storage/`
-   - `public/uploads/`
-   - `phpmailer/` if installed manually
->>>>>>> Stashed changes
 4. Run:
 
-```bat
-cd C:\xampp\jevzgames-infra
-C:\xampp\php\php.exe update\1.1\update.php
+```bash
+php update/1.1/update.php
 ```
 
-<<<<<<< Updated upstream
-The script is idempotent and can be run again.
+5. Open Superroot and review:
+   - `Features`
+   - `Extern games`
+   - `Maintenance`
 
-## What Changes
-
-- `games.visibility` controls catalog visibility.
-- `game_builds.delivery_type` differentiates ZIP builds from external platforms.
-- `game_builds.platform`, `platform_app_id` and `platform_url` describe Steam or other platforms.
-- The client API returns `install_build.launch_url` for external platforms.
-
-For Steam, set platform to `steam` and either set `platform_app_id` or a full `steam://run/<app_id>` URL.
-=======
-The script is idempotent and can be run again safely.
->>>>>>> Stashed changes
+The external-games database is disabled by default. Enable it only after creating a separate MySQL database and saving its credentials in Superroot.

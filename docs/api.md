@@ -406,11 +406,7 @@ Devuelve:
 
 - `owned_games`: biblioteca real del launcher. Solo juegos vinculados o con licencia activa.
 - `linked_games`: alias antiguo para compatibilidad.
-<<<<<<< Updated upstream
-- `catalog`: catalogo visible para explorar juegos.
-=======
 - `catalog`: catalogo visible para explorar u obtener juegos. Solo incluye juegos con `visibility=public`.
->>>>>>> Stashed changes
 - `offline_cache`: reglas y nombres de archivos locales recomendados.
 
 Cada juego puede incluir `install_build` si Admin subio un `.zip` instalable o registro una version externa:
@@ -703,6 +699,20 @@ Devuelve request/response para pruebas guiadas en `/tutorials/`.
 ```
 
 `test` puede ser `game_info`, `version_check`, `database_status` u `oauth_device_code`.
+
+## Juegos externos 1.1
+
+Los juegos de terceros usan el rol `developer-extern` y se configuran desde la web:
+
+- Superroot configura la base externa en `/superroot/?section=extern-games-config`.
+- El developer externo usa `/external-games/`.
+- El slug del juego se genera automaticamente y se sincroniza en la tabla principal `games`.
+- En `games.source_type` queda `external`.
+- `developer_name` y `publisher_name` son opcionales; si estan vacios no se muestran publicamente.
+
+La base externa queda apagada por defecto. Cuando esta activa, contiene `external_games` y `external_game_players`. La tabla principal sigue siendo la fuente para catalogo, builds, API keys y licencias.
+
+Superroot tambien tiene `panic reinstall` en mantenimiento. Reaplica schema/seeds y migraciones runtime sin borrar datos, y requiere la password del Superroot actual.
 
 ## Steam Connect
 

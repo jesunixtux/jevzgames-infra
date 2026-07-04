@@ -9,7 +9,7 @@ use App\Security\Auth;
 use App\Security\Csrf;
 
 require_installed();
-Auth::requireRole(['developer', 'admin', 'superroot']);
+Auth::requireRole(['developer', 'developer-extern', 'admin', 'superroot']);
 
 $canSeeAdminTutorials = Auth::hasRole(['admin', 'superroot']);
 $testResult = null;

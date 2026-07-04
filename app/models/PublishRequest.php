@@ -95,6 +95,7 @@ final class PublishRequest
     public static function approve(int $requestId, int $reviewerUserId): int
     {
         self::ensureTables();
+        Game::ensureVisibilityColumn();
         $request = self::find($requestId);
         if (!$request || $request['status'] !== 'pending') {
             throw new RuntimeException('Solicitud no encontrada o ya revisada.');
@@ -104,8 +105,8 @@ final class PublishRequest
         $pdo->beginTransaction();
         try {
             $stmt = $pdo->prepare(
-                'INSERT INTO games (owner_user_id, name, slug, description, status, current_version, config_json, created_at, updated_at)
-                 VALUES (:owner_user_id, :name, :slug, :description, "development", "0.1.0", :config_json, NOW(), NOW())'
+                'INSERT INTO games (owner_user_id, name, slug, description, status, visibility, source_type, current_version, config_json, created_at, updated_at)
+                 VALUES (:owner_user_id, :name, :slug, :description, "development", "private", "external", "0.1.0", :config_json, NOW(), NOW())'
             );
             $config = [
                 'submitted_from' => 'publish-on-games',
@@ -185,6 +186,10 @@ final class PublishRequest
 
         if ($name === '' || strlen($name) > 140) {
             throw new RuntimeException('El nombre del juego debe tener entre 1 y 140 caracteres.');
+        }
+
+        if ($slug === '') {
+            $slug = 'ext-' . bin2hex(random_bytes(8));
         }
 
         if (!preg_match('/^[a-z0-9-]{2,160}$/', $slug)) {

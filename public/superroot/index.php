@@ -4,6 +4,7 @@ declare(strict_types=1);
 require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bootstrap.php';
 
 use App\Core\Page;
+use App\Models\ExternalGames;
 use App\Models\PlatformSettings;
 use App\Models\Superroot;
 use App\Security\Auth;
@@ -16,7 +17,7 @@ Auth::requireRole('superroot');
 
 $user = Auth::user();
 $userId = (int) ($user['id'] ?? 0);
-$sections = ['overview', 'config', 'features', 'content', 'access', 'integrations', 'users', 'maintenance'];
+$sections = ['overview', 'config', 'features', 'content', 'access', 'integrations', 'extern-games-config', 'users', 'maintenance'];
 $section = (string) ($_GET['section'] ?? 'overview');
 if (!in_array($section, $sections, true)) {
     $section = 'overview';
@@ -69,6 +70,20 @@ if (request_is_post()) {
             PlatformSettings::saveMaintenance($_POST);
             ActivityLogger::info('superroot_maintenance_saved', ['user_id' => $userId]);
             flash('message', 'Modo mantenimiento actualizado.');
+            redirect_to('/superroot/?section=maintenance');
+        }
+
+        if ($action === 'save_external_games_config') {
+            ExternalGames::saveSettings($_POST);
+            ActivityLogger::info('superroot_external_games_config_saved', ['user_id' => $userId]);
+            flash('message', 'Configuracion de juegos externos actualizada.');
+            redirect_to('/superroot/?section=extern-games-config');
+        }
+
+        if ($action === 'panic_reinstall') {
+            $result = Superroot::panicReinstall($userId, (string) ($_POST['superroot_password'] ?? ''));
+            ActivityLogger::info('superroot_panic_reinstall', ['user_id' => $userId, 'statements' => (int) $result['statements']]);
+            flash('message', 'Panic reinstall completado. ' . $result['message']);
             redirect_to('/superroot/?section=maintenance');
         }
 
@@ -130,6 +145,8 @@ $supportedLocalesText = implode(PHP_EOL, array_map(
     array_values($languageSettings['supported_locales'])
 ));
 $maintenanceSettings = PlatformSettings::maintenanceSettings();
+$externalGamesSettings = ExternalGames::settings();
+$externalGamesStats = ExternalGames::stats();
 $emailSettings = PlatformSettings::emailVerificationSettings();
 $eulaSettings = PlatformSettings::eulaSettings();
 $eulaTranslations = PlatformSettings::eulaTranslations();
@@ -149,6 +166,7 @@ $sectionLabels = [
     'content' => 'Contenido',
     'access' => 'Acceso legal',
     'integrations' => 'Integraciones',
+    'extern-games-config' => 'Extern games',
     'users' => 'Usuarios',
     'maintenance' => 'Mantenimiento',
 ];
@@ -635,6 +653,69 @@ Page::header('Superroot');
     </section>
 <?php endif; ?>
 
+<?php if ($section === 'extern-games-config'): ?>
+    <section class="panel">
+        <div class="section-heading">
+            <div>
+                <h2>Extern games config</h2>
+                <p class="muted">Base dedicada para juegos de terceros. Todo queda apagado por defecto y solo el rol <code>developer-extern</code> puede publicar desde su apartado.</p>
+            </div>
+            <span class="status-pill <?= ($externalGamesSettings['enabled'] && $externalGamesSettings['allow_publish'] && $externalGamesSettings['configured']) ? 'status-pill--published' : 'status-pill--archived' ?>">
+                <?= ($externalGamesSettings['enabled'] && $externalGamesSettings['allow_publish'] && $externalGamesSettings['configured']) ? 'Activo' : 'Deshabilitado' ?>
+            </span>
+        </div>
+
+        <form class="form" method="post">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="save_external_games_config">
+            <div class="form-grid">
+                <label class="checkbox-field">
+                    <input type="checkbox" name="external_games_enabled" value="1" <?= $externalGamesSettings['enabled'] ? 'checked' : '' ?>>
+                    Activar juegos externos
+                </label>
+                <label class="checkbox-field">
+                    <input type="checkbox" name="external_games_allow_publish" value="1" <?= $externalGamesSettings['allow_publish'] ? 'checked' : '' ?>>
+                    Permitir publicar/configurar
+                </label>
+                <div class="field">
+                    <label for="external_games_db_host">Host BD externa</label>
+                    <input id="external_games_db_host" name="external_games_db_host" value="<?= e($externalGamesSettings['db_host']) ?>" placeholder="127.0.0.1">
+                </div>
+                <div class="field">
+                    <label for="external_games_db_port">Puerto</label>
+                    <input id="external_games_db_port" name="external_games_db_port" type="number" min="1" max="65535" value="<?= e($externalGamesSettings['db_port']) ?>">
+                </div>
+                <div class="field">
+                    <label for="external_games_db_name">Base de datos</label>
+                    <input id="external_games_db_name" name="external_games_db_name" value="<?= e($externalGamesSettings['db_name']) ?>" placeholder="jevzgames_external">
+                </div>
+                <div class="field">
+                    <label for="external_games_db_user">Usuario BD</label>
+                    <input id="external_games_db_user" name="external_games_db_user" value="<?= e($externalGamesSettings['db_user']) ?>" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label for="external_games_db_password">Password BD</label>
+                    <input id="external_games_db_password" name="external_games_db_password" type="password" autocomplete="new-password" placeholder="<?= $externalGamesSettings['db_password_configured'] ? 'Guardado - deja vacio para conservarlo' : '' ?>">
+                </div>
+            </div>
+            <div class="actions">
+                <button type="submit">Guardar juegos externos</button>
+                <a class="button button--secondary" href="<?= e(url('/external-games/')) ?>">Abrir apartado externo</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <h2>Estado de base externa</h2>
+        <dl class="meta">
+            <div><dt>Configurada</dt><dd><?= e($boolText((bool) $externalGamesSettings['configured'])) ?></dd></div>
+            <div><dt>Conexion</dt><dd><?= e($externalGamesStats['message']) ?></dd></div>
+            <div><dt>Juegos externos</dt><dd><?= e($externalGamesStats['external_games']) ?></dd></div>
+            <div><dt>Jugadores externos</dt><dd><?= e($externalGamesStats['external_players']) ?></dd></div>
+        </dl>
+    </section>
+<?php endif; ?>
+
 <?php if ($section === 'users'): ?>
     <section class="panel">
         <h2>Usuarios y roles</h2>
@@ -681,7 +762,7 @@ Page::header('Superroot');
                                     <span class="status-pill status-pill--solved">superroot</span>
                                 <?php else: ?>
                                     <div class="role-checks" form="user-form-<?= e($managedUser['id']) ?>">
-                                        <?php foreach (['user' => 'User', 'developer' => 'Developer', 'admin' => 'Admin', 'supporter' => 'Supporter'] as $role => $label): ?>
+                                        <?php foreach (['user' => 'User', 'developer' => 'Developer', 'developer-extern' => 'Developer extern', 'admin' => 'Admin', 'supporter' => 'Supporter'] as $role => $label): ?>
                                             <label class="checkbox-field checkbox-field--compact">
                                                 <input form="user-form-<?= e($managedUser['id']) ?>" type="checkbox" name="roles[]" value="<?= e($role) ?>" <?= in_array($role, $managedUser['roles'], true) ? 'checked' : '' ?>>
                                                 <?= e($label) ?>
@@ -740,6 +821,22 @@ Page::header('Superroot');
             <div><dt>Lock</dt><dd><code><?= e($maintenance['lock_path']) ?></code></dd></div>
             <div><dt>Log</dt><dd><code><?= e($maintenance['log_path']) ?></code></dd></div>
         </dl>
+    </section>
+
+    <section class="panel">
+        <h2>Panic reinstall</h2>
+        <p class="muted">Reaplica <code>database/schema.sql</code>, <code>database/seeds.sql</code> y las migraciones runtime sin borrar datos existentes. No ejecuta DROP ni TRUNCATE.</p>
+        <form class="form" method="post">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="panic_reinstall">
+            <div class="field">
+                <label for="superroot_password">Password Superroot</label>
+                <input id="superroot_password" name="superroot_password" type="password" autocomplete="current-password" required>
+            </div>
+            <div class="actions">
+                <button type="submit" class="button button--danger">Ejecutar panic reinstall</button>
+            </div>
+        </form>
     </section>
 
     <section class="panel">

@@ -342,7 +342,7 @@ final class PlatformSettings
         return [
             'enabled' => (bool) $values['maintenance.enabled'],
             'message' => (string) $values['maintenance.message'],
-            'allowed_roles' => ['admin', 'superroot', 'developer'],
+            'allowed_roles' => ['admin', 'superroot', 'developer', 'developer-extern'],
         ];
     }
 

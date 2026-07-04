@@ -2,6 +2,7 @@ INSERT INTO roles (slug, name, description, is_system)
 VALUES
 ('user', 'Usuario', 'Usuario normal de la plataforma.', 1),
 ('developer', 'Desarrollador', 'Gestiona juegos propios y configuracion publica.', 1),
+('developer-extern', 'Desarrollador externo', 'Publica y configura juegos de terceros.', 1),
 ('admin', 'Administrador', 'Administra usuarios, juegos, logs y moderacion.', 1),
 ('supporter', 'Soporte', 'Atiende solicitudes y conversaciones de soporte.', 1),
 ('superroot', 'Superroot', 'Control total de la infraestructura.', 1)
@@ -35,6 +36,12 @@ SELECT r.id, p.id
 FROM roles r
 INNER JOIN permissions p ON p.slug IN ('profile.view', 'codes.redeem', 'games.manage', 'api.keys.manage')
 WHERE r.slug = 'developer';
+
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+INNER JOIN permissions p ON p.slug IN ('profile.view', 'codes.redeem', 'games.manage', 'api.keys.manage')
+WHERE r.slug = 'developer-extern';
 
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id

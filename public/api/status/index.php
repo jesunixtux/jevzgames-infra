@@ -7,7 +7,7 @@ use App\Core\Database;
 use App\Security\Auth;
 
 $databaseConnected = false;
-$isInternalUser = is_installed() && Auth::hasRole(['developer', 'admin', 'superroot']);
+$isInternalUser = is_installed() && Auth::hasRole(['developer', 'developer-extern', 'admin', 'superroot']);
 
 if (!$isInternalUser) {
     api_response(true, 'OK', [

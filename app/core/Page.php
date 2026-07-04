@@ -105,8 +105,11 @@ final class Page
                     </span>
                 </a>
                 <a href="<?= \e(\url('/support/')) ?>"><?= \e(\t('nav.support')) ?></a>
-                <?php if (Auth::hasRole(['developer', 'admin', 'superroot'])): ?>
+                <?php if (Auth::hasRole(['developer', 'developer-extern', 'admin', 'superroot'])): ?>
                     <a href="<?= \e(\url('/tutorials/')) ?>"><?= \e(\t('nav.tutorials')) ?></a>
+                <?php endif; ?>
+                <?php if (Auth::hasRole(['developer-extern', 'admin', 'superroot'])): ?>
+                    <a href="<?= \e(\url('/external-games/')) ?>"><?= \e(\t('nav.external_games')) ?></a>
                 <?php endif; ?>
                 <?php if (Auth::hasRole(['admin', 'superroot'])): ?>
                     <a href="<?= \e(\url('/admin/')) ?>"><?= \e(\t('nav.admin')) ?></a>

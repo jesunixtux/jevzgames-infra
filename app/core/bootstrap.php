@@ -85,7 +85,7 @@ if (isset($_GET['lang'])) {
 if (PHP_SAPI !== 'cli' && is_installed()) {
     try {
         $maintenance = \App\Models\PlatformSettings::maintenanceSettings();
-        if (!empty($maintenance['enabled']) && !\App\Security\Auth::hasRole(['admin', 'superroot', 'developer'])) {
+        if (!empty($maintenance['enabled']) && !\App\Security\Auth::hasRole(['admin', 'superroot', 'developer', 'developer-extern'])) {
             $path = current_path();
             $base = public_base_path();
             $route = $base !== '' && str_starts_with($path, $base) ? substr($path, strlen($base)) : $path;

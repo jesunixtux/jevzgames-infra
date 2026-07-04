@@ -216,11 +216,7 @@ Permite:
 - Controlar visibilidad por juego: `public` aparece en catalogo, `unlisted` solo abre con URL directa y `private` solo lo ve el dueño, Admin o Superroot.
 
 El boton manual de vincular queda reservado a `admin` y `superroot`. Los jugadores normales se vinculan al iniciar sesion desde una app compatible o al obtener un juego instalable.
-<<<<<<< Updated upstream
-Si el cliente tipo Steam esta activo, la pagina web no expone enlaces directos al ZIP; la instalacion y updates se hacen desde el cliente.
-=======
-Si el cliente tipo Steam esta activo en Superroot, la web no muestra enlaces directos para descargar ZIP de juegos; los juegos con build se instalan desde el cliente.
->>>>>>> Stashed changes
+Si el cliente tipo Steam esta activo en Superroot, la web no muestra enlaces directos para descargar ZIP de juegos; los juegos con build se instalan y actualizan desde el cliente.
 
 La biblioteca del usuario vive en:
 
@@ -240,16 +236,42 @@ Un juego se registra desde Admin en la tabla `games` con:
 - `slug`
 - `description`
 - `status`
-<<<<<<< Updated upstream
-- `visibility`
-=======
 - `visibility` (`public`, `unlisted`, `private`)
->>>>>>> Stashed changes
+- `developer_name`
+- `publisher_name`
+- `source_type` (`internal`, `external`)
 - `current_version`
 - `config_json`
 - `endpoints_json`
 - `external_database_json`
 - `cdn_json`
+
+## Juegos externos 1.1
+
+Superroot puede activar una base dedicada para juegos de terceros desde:
+
+```text
+/superroot/?section=extern-games-config
+```
+
+Por defecto esta funcion queda desactivada. Para usarla:
+
+- Crea una base MySQL exclusiva para juegos externos.
+- Guarda host, puerto, base, usuario y password en Superroot.
+- Activa `Juegos externos` y `Permitir publicar/configurar`.
+- Asigna el rol `developer-extern` a los usuarios externos.
+
+Los usuarios con `developer-extern` gestionan sus juegos desde:
+
+```text
+/external-games/
+```
+
+Los slugs se generan automaticamente, los juegos se sincronizan con la tabla principal `games` como `source_type=external`, y la desarrolladora/publisher solo se muestran publicamente cuando estan configurados.
+
+## Panic Reinstall
+
+Superroot puede ejecutar `panic reinstall` desde mantenimiento. Reaplica `database/schema.sql`, `database/seeds.sql` y migraciones runtime sin borrar datos existentes. Requiere la password del Superroot actual y no ejecuta `DROP` ni `TRUNCATE`.
 
 ## Vincular un juego con la plataforma
 
@@ -477,20 +499,12 @@ Si una cuenta esta suspendida, el login web muestra un popup y el cliente recibe
 `POST /api/client/library/` devuelve dos listas separadas:
 
 - `owned_games`: juegos vinculados o con licencia activa del usuario. Esta es la biblioteca que debe mostrar el launcher.
-<<<<<<< Updated upstream
-- `catalog`: catalogo publico visible. Sirve para explorar juegos, no para modo offline.
-
-El campo antiguo `linked_games` sigue existiendo para compatibilidad, pero el launcher nuevo debe preferir `owned_games`.
-
-Cada item de `owned_games` incluye `install_build`, `has_license`, `is_linked`, `offline_allowed`, `offline_available` y `last_played_at`. El modo offline solo debe permitir ejecutar juegos ya instalados cuando `offline_available=true`; no debe descargar builds nuevas ni crear licencias nuevas sin conexion.
-Si `install_build.delivery_type` es `external_platform`, el cliente debe abrir `install_build.launch_url` y no intentar descargar ZIP. Para Steam se puede usar `steam://run/<app_id>`.
-=======
 - `catalog`: catalogo publico visible. Solo incluye juegos con `visibility=public`; sirve para explorar u obtener juegos, no para modo offline.
 
 El campo antiguo `linked_games` sigue existiendo para compatibilidad, pero el launcher nuevo debe preferir `owned_games`.
 
 Cada item de `owned_games` incluye `visibility`, `install_build`, `has_license`, `is_linked`, `offline_allowed`, `offline_available` y `last_played_at`. El modo offline solo debe permitir ejecutar juegos ya instalados cuando `offline_available=true`; no debe descargar builds nuevas ni crear licencias nuevas sin conexion.
->>>>>>> Stashed changes
+Si `install_build.delivery_type` es `external_platform`, el cliente debe abrir `install_build.launch_url` y no intentar descargar ZIP. Para Steam se puede usar `steam://run/<app_id>`.
 
 Estructura local recomendada para el launcher:
 

@@ -59,13 +59,9 @@ Page::header('Biblioteca');
             <?php foreach ($links as $game): ?>
                 <?php
                 $build = $builds[(int) $game['game_id']] ?? null;
-<<<<<<< Updated upstream
                 $buildIsZip = $build && (($build['delivery_type'] ?? 'zip') === 'zip') && !empty($build['download_url']);
                 $buildIsExternal = $build && (($build['delivery_type'] ?? 'zip') === 'external_platform') && !empty($build['launch_url']);
                 $canDownloadFromWeb = !$clientEnabled && $buildIsZip;
-=======
-                $buildCanDownloadOnWeb = $build && !empty($build['download_url']) && !$clientEnabled;
->>>>>>> Stashed changes
                 ?>
                 <article class="game-card">
                     <div class="game-card__header">
@@ -76,6 +72,12 @@ Page::header('Biblioteca');
                     </div>
                     <dl class="meta">
                         <div><dt>Slug</dt><dd><code><?= e($game['slug']) ?></code></dd></div>
+                        <?php if (!empty($game['developer_name'])): ?>
+                            <div><dt>Desarrolladora</dt><dd><?= e($game['developer_name']) ?></dd></div>
+                        <?php endif; ?>
+                        <?php if (!empty($game['publisher_name'])): ?>
+                            <div><dt>Publisher</dt><dd><?= e($game['publisher_name']) ?></dd></div>
+                        <?php endif; ?>
                         <div><dt>Version publica</dt><dd><?= e($game['current_version'] ?? 'Sin version') ?></dd></div>
                         <div><dt>Vinculado</dt><dd><?= e($game['linked_at']) ?></dd></div>
                         <div><dt>Licencia</dt><dd><?= !empty($game['license_id']) ? e(($game['license_source'] ?? 'manual') . ' / activa') : 'Sin licencia' ?></dd></div>
@@ -96,19 +98,12 @@ Page::header('Biblioteca');
                     <div class="actions">
                         <a class="button button--secondary" href="<?= e(url('/games/?game=' . rawurlencode((string) $game['slug']))) ?>">Ver juego</a>
                         <a class="button button--secondary" href="<?= e(url('/achievements/?game=' . (int) $game['game_id'])) ?>">Logros</a>
-<<<<<<< Updated upstream
                         <?php if ($canDownloadFromWeb): ?>
                             <a class="button" href="<?= e($build['download_url']) ?>">Descargar build</a>
                         <?php elseif ($clientEnabled && $buildIsZip): ?>
-                            <span class="muted">Instalable desde el cliente.</span>
-                        <?php elseif ($buildIsExternal): ?>
-                            <span class="muted">Se abre desde <?= e((string) ($build['platform'] ?? 'plataforma externa')) ?> usando el cliente.</span>
-=======
-                        <?php if ($buildCanDownloadOnWeb): ?>
-                            <a class="button" href="<?= e($build['download_url']) ?>">Descargar build</a>
-                        <?php elseif ($build && !empty($build['download_url']) && $clientEnabled): ?>
                             <a class="button" href="<?= e(url('/client/')) ?>"><?= e(i18n_text('Instalar desde cliente', 'Install from client')) ?></a>
->>>>>>> Stashed changes
+                        <?php elseif ($buildIsExternal): ?>
+                            <a class="button" href="<?= e(url('/client/')) ?>"><?= e(i18n_text('Abrir desde cliente', 'Open from client')) ?></a>
                         <?php endif; ?>
                     </div>
                 </article>

@@ -9,7 +9,7 @@ $data = [
     'status' => 'available',
 ];
 
-if (Auth::hasRole(['developer', 'admin', 'superroot'])) {
+if (Auth::hasRole(['developer', 'developer-extern', 'admin', 'superroot'])) {
     $data['endpoints'] = [
         url('/api/status/'),
         url('/api/game-info/'),

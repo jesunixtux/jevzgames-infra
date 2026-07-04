@@ -9,7 +9,7 @@ use RuntimeException;
 
 final class Superroot
 {
-    private const MANAGED_ROLES = ['user', 'developer', 'admin', 'supporter'];
+    private const MANAGED_ROLES = ['user', 'developer', 'developer-extern', 'admin', 'supporter'];
 
     public static function dashboardStats(): array
     {
@@ -230,6 +230,37 @@ final class Superroot
             $pdo->rollBack();
             throw $exception;
         }
+    }
+
+    public static function panicReinstall(int $actorUserId, string $password): array
+    {
+        $actor = User::findByIdWithRoles($actorUserId);
+        if (!$actor || !in_array('superroot', $actor['roles'] ?? [], true)) {
+            throw new RuntimeException('Solo Superroot puede ejecutar panic reinstall.');
+        }
+
+        if ($password === '' || !password_verify($password, (string) ($actor['password_hash'] ?? ''))) {
+            throw new RuntimeException('Credenciales Superroot invalidas.');
+        }
+
+        $schemaPath = ROOT_PATH . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'schema.sql';
+        $seedsPath = ROOT_PATH . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'seeds.sql';
+        $statements = 0;
+
+        foreach ([$schemaPath, $seedsPath] as $path) {
+            if (!is_file($path)) {
+                throw new RuntimeException('No se encontro ' . basename($path) . '.');
+            }
+
+            $statements += self::executeSqlFile($path);
+        }
+
+        self::ensureRuntimeTables();
+
+        return [
+            'statements' => $statements,
+            'message' => 'Schema y seeds reaplicados sin DROP/TRUNCATE. Datos existentes conservados.',
+        ];
     }
 
     public static function maintenanceInfo(): array
@@ -459,5 +490,103 @@ final class Superroot
         }
 
         return array_values($ids);
+    }
+
+    private static function executeSqlFile(string $path): int
+    {
+        $sql = file_get_contents($path);
+        if (!is_string($sql)) {
+            throw new RuntimeException('No se pudo leer ' . basename($path) . '.');
+        }
+
+        $statements = self::splitSqlStatements($sql);
+        $count = 0;
+        foreach ($statements as $statement) {
+            Database::pdo()->exec($statement);
+            $count++;
+        }
+
+        return $count;
+    }
+
+    private static function splitSqlStatements(string $sql): array
+    {
+        $statements = [];
+        $buffer = '';
+        $length = strlen($sql);
+        $quote = null;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $sql[$i];
+            $next = $i + 1 < $length ? $sql[$i + 1] : '';
+
+            if ($quote === null && $char === '-' && $next === '-') {
+                while ($i < $length && $sql[$i] !== "\n") {
+                    $i++;
+                }
+                continue;
+            }
+
+            if ($char === "'" || $char === '"') {
+                if ($quote === $char) {
+                    $escaped = $i > 0 && $sql[$i - 1] === '\\';
+                    if (!$escaped) {
+                        $quote = null;
+                    }
+                } elseif ($quote === null) {
+                    $quote = $char;
+                }
+            }
+
+            if ($char === ';' && $quote === null) {
+                $statement = trim($buffer);
+                if ($statement !== '') {
+                    $statements[] = $statement;
+                }
+                $buffer = '';
+                continue;
+            }
+
+            $buffer .= $char;
+        }
+
+        $tail = trim($buffer);
+        if ($tail !== '') {
+            $statements[] = $tail;
+        }
+
+        return $statements;
+    }
+
+    private static function ensureRuntimeTables(): void
+    {
+        \App\Security\Auth::ensureRememberTable();
+        ClientApp::ensureTables();
+        Presence::ensureTables();
+        DirectMessage::ensureTables();
+        PasswordReset::ensureTables();
+        EmailVerification::ensureTables();
+        Notification::ensureTables();
+        Friend::ensureTables();
+        SocialSettings::ensureTables();
+        PublicProfile::ensureTables();
+        Community::ensureTables();
+        Achievement::ensureTables();
+        CloudSave::ensureTables();
+        Inventory::ensureTables();
+        OAuth::ensureTables();
+        SteamAuth::ensureTables();
+        PublishRequest::ensureTables();
+        Workshop::ensureTables();
+        Game::ensureLicenseTables();
+        Game::ensureUserGameMetadataColumns();
+        Game::ensureVisibilityColumn();
+        GameBuild::ensureTables();
+        ExternalGames::ensureSystemRole();
+
+        $settings = ExternalGames::settings();
+        if ($settings['enabled'] && $settings['configured']) {
+            ExternalGames::ensureExternalTables();
+        }
     }
 }

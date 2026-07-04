@@ -120,8 +120,12 @@ CREATE TABLE IF NOT EXISTS games (
     name VARCHAR(140) NOT NULL,
     slug VARCHAR(160) NOT NULL UNIQUE,
     description TEXT NULL,
+    developer_name VARCHAR(140) NULL,
+    publisher_name VARCHAR(140) NULL,
     status ENUM('development', 'playtest', 'beta', 'published', 'archived') NOT NULL DEFAULT 'development',
     visibility ENUM('public', 'unlisted', 'private') NOT NULL DEFAULT 'public',
+    source_type ENUM('internal', 'external') NOT NULL DEFAULT 'internal',
+    external_game_id BIGINT UNSIGNED NULL,
     current_version VARCHAR(60) NULL,
     banner_path VARCHAR(255) NULL,
     config_json LONGTEXT NULL,
@@ -133,6 +137,8 @@ CREATE TABLE IF NOT EXISTS games (
     INDEX idx_games_owner (owner_user_id),
     INDEX idx_games_status (status),
     INDEX idx_games_visibility (visibility),
+    INDEX idx_games_source_type (source_type),
+    INDEX idx_games_external_game (external_game_id),
     CONSTRAINT fk_games_owner FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

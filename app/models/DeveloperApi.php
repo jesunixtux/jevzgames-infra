@@ -21,7 +21,7 @@ final class DeveloperApi
         }
 
         $roles = $user['roles'] ?? [];
-        if (count(array_intersect($roles, ['developer', 'admin', 'superroot'])) === 0) {
+        if (count(array_intersect($roles, ['developer', 'developer-extern', 'admin', 'superroot'])) === 0) {
             throw new RuntimeException('Acceso developer requerido.');
         }
 

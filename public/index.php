@@ -9,7 +9,7 @@ use App\Security\Auth;
 
 $user = Auth::user();
 $contentSettings = is_installed() ? PlatformSettings::contentSettings() : [];
-$isInternalUser = $user && Auth::hasRole(['developer', 'admin', 'superroot']);
+$isInternalUser = $user && Auth::hasRole(['developer', 'developer-extern', 'admin', 'superroot']);
 $canOpenAdmin = $user && Auth::hasRole(['admin', 'superroot']);
 $canOpenSupport = $user && Auth::hasRole(['supporter', 'admin', 'superroot']);
 $canOpenSuperroot = $user && Auth::hasRole('superroot');
@@ -91,6 +91,9 @@ Page::header(i18n_text('Inicio', 'Home'));
         <?php if ($isInternalUser): ?>
             <a class="button button--secondary" href="<?= e(url('/tutorials/')) ?>"><?= e(t('nav.tutorials')) ?></a>
             <a class="button button--secondary" href="<?= e(url('/api/status/')) ?>"><?= e(i18n_text('Estado API', 'API status')) ?></a>
+            <?php if (Auth::hasRole(['developer-extern', 'admin', 'superroot'])): ?>
+                <a class="button button--secondary" href="<?= e(url('/external-games/')) ?>"><?= e(t('nav.external_games')) ?></a>
+            <?php endif; ?>
         <?php endif; ?>
         <?php if ($canOpenAdmin): ?>
             <a class="button button--secondary" href="<?= e(url('/admin/')) ?>"><?= e(t('nav.admin')) ?></a>

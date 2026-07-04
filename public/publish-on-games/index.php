@@ -15,11 +15,16 @@ require_installed();
 $enabled = PlatformSettings::enabled('publish_on_games');
 $user = Auth::user();
 $userId = $user ? (int) $user['id'] : 0;
+$canSubmitExternalGame = Auth::hasRole(['developer-extern', 'admin', 'superroot']);
 
 if (request_is_post()) {
     Auth::requireLogin();
     if (!$enabled) {
         flash('error', 'La publicacion abierta de juegos esta deshabilitada.');
+        redirect_to('/publish-on-games/');
+    }
+    if (!$canSubmitExternalGame) {
+        flash('error', 'Solo desarrolladores externos pueden enviar juegos de terceros.');
         redirect_to('/publish-on-games/');
     }
 
@@ -68,6 +73,11 @@ Page::header('Publicar juego');
             <a class="button button--secondary" href="<?= e(url('/register/')) ?>">Registro</a>
         </div>
     </section>
+<?php elseif (!$canSubmitExternalGame): ?>
+    <section class="panel">
+        <h2>Acceso para desarrolladores externos</h2>
+        <p class="muted">Solo cuentas con rol <code>developer-extern</code> pueden enviar juegos de terceros.</p>
+    </section>
 <?php else: ?>
     <section class="panel">
         <h2>Enviar juego</h2>
@@ -79,8 +89,8 @@ Page::header('Publicar juego');
                     <input id="name" name="name" maxlength="140" required>
                 </div>
                 <div class="field">
-                    <label for="slug">Slug publico</label>
-                    <input id="slug" name="slug" maxlength="160" pattern="[a-z0-9-]{2,160}" placeholder="mi-juego" required>
+                    <label>Slug publico</label>
+                    <input value="Se genera automaticamente" disabled>
                 </div>
                 <div class="field">
                     <label for="contact_email">Email de contacto</label>

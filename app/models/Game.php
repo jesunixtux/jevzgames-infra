@@ -9,19 +9,26 @@ use RuntimeException;
 final class Game
 {
     private const VISIBLE_STATUSES = ['development', 'playtest', 'beta', 'published'];
-<<<<<<< Updated upstream
-    private const VISIBILITY_OPTIONS = ['public', 'unlisted', 'private'];
-=======
     private const VISIBILITIES = ['public', 'unlisted', 'private'];
 
     public static function ensureVisibilityColumn(): void
     {
         self::addColumnIfMissing('games', 'visibility', 'ENUM("public","unlisted","private") NOT NULL DEFAULT "public" AFTER status');
-        if (!self::indexExists('games', 'idx_games_visibility')) {
-            Database::pdo()->exec('ALTER TABLE games ADD INDEX idx_games_visibility (visibility)');
+        self::addColumnIfMissing('games', 'developer_name', 'VARCHAR(140) NULL AFTER description');
+        self::addColumnIfMissing('games', 'publisher_name', 'VARCHAR(140) NULL AFTER developer_name');
+        self::addColumnIfMissing('games', 'source_type', 'ENUM("internal","external") NOT NULL DEFAULT "internal" AFTER visibility');
+        self::addColumnIfMissing('games', 'external_game_id', 'BIGINT UNSIGNED NULL AFTER source_type');
+
+        foreach ([
+            'idx_games_visibility' => 'visibility',
+            'idx_games_source_type' => 'source_type',
+            'idx_games_external_game' => 'external_game_id',
+        ] as $index => $column) {
+            if (!self::indexExists('games', $index)) {
+                Database::pdo()->exec('ALTER TABLE games ADD INDEX ' . $index . ' (' . $column . ')');
+            }
         }
     }
->>>>>>> Stashed changes
 
     public static function ensureLicenseTables(): void
     {
@@ -47,38 +54,22 @@ final class Game
         );
     }
 
-    public static function ensureVisibilityColumn(): void
-    {
-<<<<<<< Updated upstream
-        self::addColumnIfMissing('games', 'visibility', 'ENUM("public", "unlisted", "private") NOT NULL DEFAULT "public" AFTER status');
-    }
-
     public static function publicGames(?int $userId = null, string $status = 'all', bool $includeUnlisted = false, bool $canViewPrivate = false): array
     {
-=======
->>>>>>> Stashed changes
         self::ensureVisibilityColumn();
         $params = [];
-        $where = [
-            'g.status IN ("development", "playtest", "beta", "published")',
-            'g.visibility = "public"',
-        ];
+        $where = ['g.status IN ("development", "playtest", "beta", "published")'];
 
         if ($status !== 'all' && in_array($status, self::VISIBLE_STATUSES, true)) {
             $where[] = 'g.status = :status';
             $params['status'] = $status;
         }
 
-        $visibilityWhere = [];
-        $visibilityWhere[] = $includeUnlisted ? 'g.visibility IN ("public", "unlisted")' : 'g.visibility = "public"';
-        if ($userId !== null) {
-            $visibilityWhere[] = '(g.visibility = "private" AND g.owner_user_id = :visibility_owner_user_id)';
-            $params['visibility_owner_user_id'] = $userId;
-        }
         if ($canViewPrivate) {
-            $visibilityWhere[] = 'g.visibility = "private"';
+            $where[] = $includeUnlisted ? 'g.visibility IN ("public", "unlisted", "private")' : 'g.visibility IN ("public", "private")';
+        } else {
+            $where[] = $includeUnlisted ? 'g.visibility IN ("public", "unlisted")' : 'g.visibility = "public"';
         }
-        $where[] = '(' . implode(' OR ', $visibilityWhere) . ')';
 
         $linkedSelect = '0 AS is_linked, 0 AS has_license';
         $linkedJoin = '';
@@ -92,7 +83,8 @@ final class Game
             $params['licensed_user_id'] = $userId;
         }
 
-        $sql = 'SELECT g.id, g.owner_user_id, g.name, g.slug, g.description, g.status, g.visibility, g.current_version, g.banner_path,
+        $sql = 'SELECT g.id, g.owner_user_id, g.name, g.slug, g.description, g.developer_name, g.publisher_name,
+                       g.status, g.visibility, g.source_type, g.external_game_id, g.current_version, g.banner_path,
                        g.config_json, g.endpoints_json, g.external_database_json, g.cdn_json, g.created_at, g.updated_at,
                        ' . $linkedSelect . ',
                        builds.latest_build_at,
@@ -122,14 +114,6 @@ final class Game
         }
 
         $params = ['slug' => $slug];
-        $visibilityWhere = ['g.visibility IN ("public", "unlisted")'];
-        if ($userId !== null) {
-            $visibilityWhere[] = '(g.visibility = "private" AND g.owner_user_id = :visibility_owner_user_id)';
-            $params['visibility_owner_user_id'] = $userId;
-        }
-        if ($canViewPrivate) {
-            $visibilityWhere[] = 'g.visibility = "private"';
-        }
         $linkedSelect = '0 AS is_linked, 0 AS has_license';
         $linkedJoin = '';
         if ($userId !== null) {
@@ -166,11 +150,7 @@ final class Game
              ) builds ON builds.game_id = g.id
              WHERE g.slug = :slug
                AND g.status IN ("development", "playtest", "beta", "published")
-<<<<<<< Updated upstream
-               AND (' . implode(' OR ', $visibilityWhere) . ')
-=======
                ' . $visibilityWhere . '
->>>>>>> Stashed changes
              LIMIT 1'
         );
         $stmt->execute($params);
@@ -182,6 +162,23 @@ final class Game
     public static function linkUser(int $userId, int $gameId): void
     {
         self::grantLicense($userId, $gameId, 'manual');
+    }
+
+    public static function unlinkUser(int $userId, int $gameId, bool $purgeGameData = false): void
+    {
+        if ($userId <= 0 || $gameId <= 0) {
+            throw new RuntimeException('Vinculo de juego invalido.');
+        }
+
+        if ($purgeGameData) {
+            self::purgeUserGameData($userId, $gameId);
+        }
+
+        $stmt = Database::pdo()->prepare('DELETE FROM user_games WHERE user_id = :user_id AND game_id = :game_id');
+        $stmt->execute([
+            'user_id' => $userId,
+            'game_id' => $gameId,
+        ]);
     }
 
     public static function ensureUserGameMetadataColumns(): void
@@ -264,44 +261,14 @@ final class Game
         return $id === false ? null : (int) $id;
     }
 
-    private static function upsertUserLink(int $userId, int $gameId): void
-    {
-        self::ensureUserGameMetadataColumns();
-        $stmt = Database::pdo()->prepare(
-            'INSERT INTO user_games (user_id, game_id, linked_at)
-             VALUES (:user_id, :game_id, NOW())
-             ON DUPLICATE KEY UPDATE linked_at = linked_at'
-        );
-        $stmt->execute([
-            'user_id' => $userId,
-            'game_id' => $gameId,
-        ]);
-    }
-
-    public static function unlinkUser(int $userId, int $gameId, bool $deleteGameData = true): void
-    {
-        if ($deleteGameData) {
-            self::purgeUserGameData($userId, $gameId);
-        }
-
-        $stmt = Database::pdo()->prepare('DELETE FROM user_games WHERE user_id = :user_id AND game_id = :game_id');
-        $stmt->execute([
-            'user_id' => $userId,
-            'game_id' => $gameId,
-        ]);
-    }
-
     public static function userLinks(int $userId): array
     {
         self::ensureVisibilityColumn();
         self::ensureLicenseTables();
         self::ensureUserGameMetadataColumns();
         $stmt = Database::pdo()->prepare(
-<<<<<<< Updated upstream
-            'SELECT ug.*, g.owner_user_id, g.name, g.slug, g.status, g.visibility, g.current_version, g.config_json,
-=======
-            'SELECT ug.*, g.name, g.slug, g.status, g.visibility, g.current_version, g.config_json,
->>>>>>> Stashed changes
+            'SELECT ug.*, g.owner_user_id, g.name, g.slug, g.developer_name, g.publisher_name,
+                    g.status, g.visibility, g.source_type, g.external_game_id, g.current_version, g.config_json,
                     l.id AS license_id, l.source AS license_source, l.license_key_preview, l.status AS license_status, l.granted_at AS licensed_at
              FROM user_games ug
              INNER JOIN games g ON g.id = ug.game_id
@@ -349,15 +316,14 @@ final class Game
         return self::VISIBLE_STATUSES;
     }
 
-<<<<<<< Updated upstream
     public static function visibilityOptions(): array
     {
-        return self::VISIBILITY_OPTIONS;
-=======
+        return self::VISIBILITIES;
+    }
+
     public static function visibilities(): array
     {
         return self::VISIBILITIES;
->>>>>>> Stashed changes
     }
 
     public static function visibilityLabel(string $visibility): string
@@ -404,6 +370,20 @@ final class Game
                 'game_id' => $gameId,
             ]);
         }
+    }
+
+    private static function upsertUserLink(int $userId, int $gameId): void
+    {
+        self::ensureUserGameMetadataColumns();
+        $stmt = Database::pdo()->prepare(
+            'INSERT INTO user_games (user_id, game_id, linked_at)
+             VALUES (:user_id, :game_id, NOW())
+             ON DUPLICATE KEY UPDATE linked_at = linked_at'
+        );
+        $stmt->execute([
+            'user_id' => $userId,
+            'game_id' => $gameId,
+        ]);
     }
 
     private static function tableExists(string $table): bool

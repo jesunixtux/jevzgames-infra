@@ -122,6 +122,8 @@ final class Admin
                  SET name = :name,
                      slug = :slug,
                      description = :description,
+                     developer_name = :developer_name,
+                     publisher_name = :publisher_name,
                      status = :status,
                      visibility = :visibility,
                      current_version = :current_version,
@@ -145,8 +147,8 @@ final class Admin
         }
 
         $stmt = $pdo->prepare(
-            'INSERT INTO games (name, slug, description, status, visibility, current_version, config_json, endpoints_json, external_database_json, cdn_json, created_at, updated_at)
-             VALUES (:name, :slug, :description, :status, :visibility, :current_version, :config_json, :endpoints_json, :external_database_json, :cdn_json, NOW(), NOW())'
+            'INSERT INTO games (name, slug, description, developer_name, publisher_name, status, visibility, current_version, config_json, endpoints_json, external_database_json, cdn_json, created_at, updated_at)
+             VALUES (:name, :slug, :description, :developer_name, :publisher_name, :status, :visibility, :current_version, :config_json, :endpoints_json, :external_database_json, :cdn_json, NOW(), NOW())'
         );
 
         $insertData = $data;
@@ -355,6 +357,8 @@ final class Admin
         $name = trim((string) ($input['name'] ?? ''));
         $slug = strtolower(trim((string) ($input['slug'] ?? '')));
         $description = trim((string) ($input['description'] ?? ''));
+        $developerName = trim((string) ($input['developer_name'] ?? ''));
+        $publisherName = trim((string) ($input['publisher_name'] ?? ''));
         $status = trim((string) ($input['status'] ?? 'development'));
         $visibility = trim((string) ($input['visibility'] ?? 'public'));
         $currentVersion = trim((string) ($input['current_version'] ?? ''));
@@ -375,15 +379,19 @@ final class Admin
             throw new RuntimeException('La descripcion del juego es demasiado larga.');
         }
 
+        if ($developerName !== '' && strlen($developerName) > 140) {
+            throw new RuntimeException('La desarrolladora no puede superar 140 caracteres.');
+        }
+
+        if ($publisherName !== '' && strlen($publisherName) > 140) {
+            throw new RuntimeException('El publisher no puede superar 140 caracteres.');
+        }
+
         if (!in_array($status, self::GAME_STATUSES, true)) {
             throw new RuntimeException('Estado de juego invalido.');
         }
 
-<<<<<<< Updated upstream
         if (!in_array($visibility, Game::visibilityOptions(), true)) {
-=======
-        if (!in_array($visibility, self::GAME_VISIBILITIES, true)) {
->>>>>>> Stashed changes
             throw new RuntimeException('Visibilidad de juego invalida.');
         }
 
@@ -396,6 +404,8 @@ final class Admin
             'name' => $name,
             'slug' => $slug,
             'description' => $description !== '' ? $description : null,
+            'developer_name' => $developerName !== '' ? $developerName : null,
+            'publisher_name' => $publisherName !== '' ? $publisherName : null,
             'status' => $status,
             'visibility' => $visibility,
             'current_version' => $currentVersion !== '' ? $currentVersion : null,
