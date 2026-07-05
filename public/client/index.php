@@ -80,7 +80,7 @@ Page::header('Cliente');
             <div class="form-grid">
                 <div class="field">
                     <label for="launcher_version">Version</label>
-                    <input id="launcher_version" name="launcher_version" placeholder="0.1.11-beta" maxlength="60" required>
+                    <input id="launcher_version" name="launcher_version" placeholder="0.1.12-beta" maxlength="60" required>
                 </div>
                 <div class="field">
                     <label for="launcher_os">OS</label>

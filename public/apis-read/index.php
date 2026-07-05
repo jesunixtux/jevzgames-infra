@@ -97,7 +97,7 @@ POST /api/client/presence/
     <h2>8. Launcher updates</h2>
     <p><?= e(i18n_text('Superroot publica releases desde /client/. El launcher descarga el ZIP, verifica checksum_sha256 si existe y reemplaza archivos al cerrar.', 'Superroot publishes releases from /client/. The launcher downloads the ZIP, verifies checksum_sha256 when present and replaces files after closing.')) ?></p>
     <pre class="code-view">POST /api/client/launcher/update-check/
-{"current_version":"0.1.11-beta","os":"windows"}</pre>
+{"current_version":"0.1.12-beta","os":"windows"}</pre>
 </section>
 <?php
 Page::footer();

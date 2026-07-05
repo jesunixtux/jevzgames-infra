@@ -13,7 +13,7 @@ This update is for installations that already run JevzGames Infra 1.1.
 - Playtime counter stored in `user_games.total_play_seconds`.
 - Steam-like cloud sync with `file_path`, while keeping legacy `api_slot`.
 - Launcher release repository and `/api/client/launcher/update-check/`.
-- RacLauncher 0.1.11 beta with redeem, account switching, automatic cloud sync, groups/family views, SHA-256 ZIP verification, ZIP cleanup and launcher auto-update.
+- RacLauncher 0.1.12 beta with redeem, account switching, UTF-8 chat, automatic cloud sync, groups/family views, SHA-256 ZIP verification, ZIP cleanup and launcher auto-update.
 - Safer game unlinking: internal games keep cloud saves, achievements and inventory; external-platform games can still purge linked game data.
 - `/apis-read/` guide additions for launcher, codes and cloud sync.
 

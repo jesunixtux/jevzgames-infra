@@ -1,4 +1,4 @@
-# RacLauncher Beta 0.1.11
+# RacLauncher Beta 0.1.12
 
 ## Cambios principales
 
@@ -13,6 +13,7 @@
 - Refresca presencia `in_game` cada 5 segundos mientras el juego esta abierto.
 - Al cerrar el juego, vuelve a presencia `online`.
 - Agrega ventana de Mensajes con polling cada 10 segundos.
+- Envia JSON en UTF-8 real y usa fuente compatible con emojis en chat.
 - Agrega ventana de Logros por juego usando `/api/client/achievements/list/`.
 - Permite probar desbloqueos con `/api/client/achievements/unlock/`; la lista visible no expone codigos internos.
 - Canjea codigos de juego u objeto con `/api/client/redeem/`.

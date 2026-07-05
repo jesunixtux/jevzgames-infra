@@ -1,4 +1,4 @@
-﻿# RacLauncher Beta 0.1.11 - JEVZGames / RacAccount
+﻿# RacLauncher Beta 0.1.12 - JEVZGames / RacAccount
 # Cambios:
 # - Flujo tipo Steam: si no hay sesion, muestra solo login.
 # - Si hay sesion guardada, entra directo a biblioteca.
@@ -18,7 +18,7 @@ $ErrorActionPreference = "Stop"
 
 $AppName = "RacLauncher"
 $BaseUrl = "https://racacount.jevzgames.com"
-$AppVersion = "0.1.11-beta"
+$AppVersion = "0.1.12-beta"
 
 $AppData = Join-Path $env:APPDATA $AppName
 $GamesDir = Join-Path $AppData "games"
@@ -151,11 +151,12 @@ function Api-Get($path) {
 
 function Api-Post($path, $body = @{}, $token = $null) {
     $url = if ($path.StartsWith("http")) { $path } else { "$BaseUrl$path" }
-    $headers = @{ Accept = "application/json"; "Content-Type" = "application/json" }
+    $headers = @{ Accept = "application/json"; "Content-Type" = "application/json; charset=utf-8" }
     if ($token) { $headers["Authorization"] = "Bearer $token" }
 
     $json = $body | ConvertTo-Json -Depth 10
-    return Invoke-RestMethod -Method Post -Uri $url -Headers $headers -Body $json -TimeoutSec 20
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+    return Invoke-RestMethod -Method Post -Uri $url -Headers $headers -Body $bytes -TimeoutSec 20
 }
 
 function Get-Token {
@@ -1545,13 +1546,14 @@ function Open-MessagesWindow {
         return
     }
 
-    $chat = New-Object System.Windows.Forms.Form
-    $chat.Text = "RacLauncher - Mensajes"
-    $chat.Size = New-Object System.Drawing.Size(880, 560)
-    $chat.StartPosition = "CenterParent"
-    $chat.BackColor = [System.Drawing.Color]::FromArgb(25,25,30)
-    $chat.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $script:ChatForm = $chat
+$chat = New-Object System.Windows.Forms.Form
+$chat.Text = "RacLauncher - Mensajes"
+$chat.Size = New-Object System.Drawing.Size(880, 560)
+$chat.StartPosition = "CenterParent"
+$chat.BackColor = [System.Drawing.Color]::FromArgb(25,25,30)
+$chat.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$chatTextFont = New-Object System.Drawing.Font("Segoe UI Emoji", 9)
+$script:ChatForm = $chat
 
     $leftTitle = New-Object System.Windows.Forms.Label
     $leftTitle.Text = "Conversaciones"
@@ -1570,10 +1572,11 @@ function Open-MessagesWindow {
     $script:ChatConversationsList = New-Object System.Windows.Forms.ListBox
     $script:ChatConversationsList.Location = New-Object System.Drawing.Point(12, 45)
     $script:ChatConversationsList.Size = New-Object System.Drawing.Size(250, 430)
-    $script:ChatConversationsList.BackColor = [System.Drawing.Color]::FromArgb(38,38,45)
-    $script:ChatConversationsList.ForeColor = [System.Drawing.Color]::White
-    $script:ChatConversationsList.Add_SelectedIndexChanged({ Open-ChatBySelectedConversation })
-    $chat.Controls.Add($script:ChatConversationsList)
+$script:ChatConversationsList.BackColor = [System.Drawing.Color]::FromArgb(38,38,45)
+$script:ChatConversationsList.ForeColor = [System.Drawing.Color]::White
+$script:ChatConversationsList.Font = $chatTextFont
+$script:ChatConversationsList.Add_SelectedIndexChanged({ Open-ChatBySelectedConversation })
+$chat.Controls.Add($script:ChatConversationsList)
 
     $script:ChatTitleLabel = New-Object System.Windows.Forms.Label
     $script:ChatTitleLabel.Text = "Selecciona una conversacion"
@@ -1600,15 +1603,19 @@ function Open-MessagesWindow {
     $script:ChatMessagesBox.Size = New-Object System.Drawing.Size(560, 365)
     $script:ChatMessagesBox.Multiline = $true
     $script:ChatMessagesBox.ReadOnly = $true
-    $script:ChatMessagesBox.ScrollBars = "Vertical"
-    $script:ChatMessagesBox.BackColor = [System.Drawing.Color]::FromArgb(38,38,45)
-    $script:ChatMessagesBox.ForeColor = [System.Drawing.Color]::White
-    $chat.Controls.Add($script:ChatMessagesBox)
+$script:ChatMessagesBox.ScrollBars = "Vertical"
+$script:ChatMessagesBox.BackColor = [System.Drawing.Color]::FromArgb(38,38,45)
+$script:ChatMessagesBox.ForeColor = [System.Drawing.Color]::White
+$script:ChatMessagesBox.Font = $chatTextFont
+$chat.Controls.Add($script:ChatMessagesBox)
 
-    $script:ChatInputBox = New-Object System.Windows.Forms.TextBox
-    $script:ChatInputBox.Location = New-Object System.Drawing.Point(280, 425)
-    $script:ChatInputBox.Size = New-Object System.Drawing.Size(455, 26)
-    $script:ChatInputBox.Add_KeyDown({
+$script:ChatInputBox = New-Object System.Windows.Forms.TextBox
+$script:ChatInputBox.Location = New-Object System.Drawing.Point(280, 425)
+$script:ChatInputBox.Size = New-Object System.Drawing.Size(455, 26)
+$script:ChatInputBox.Font = $chatTextFont
+$script:ChatInputBox.ImeMode = "On"
+$script:ChatInputBox.ShortcutsEnabled = $true
+$script:ChatInputBox.Add_KeyDown({
         if ($_.KeyCode -eq "Enter") {
             $_.SuppressKeyPress = $true
             Send-ChatMessage
@@ -1879,7 +1886,7 @@ Save-Config
 
 # UI
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "RacLauncher Beta 0.1.11"
+$form.Text = "RacLauncher Beta 0.1.12"
 $form.Size = New-Object System.Drawing.Size(960, 620)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 24)

@@ -781,7 +781,7 @@ Consulta el repositorio de releases del launcher configurado desde `/client/` po
 
 ```json
 {
-  "current_version": "0.1.11-beta",
+  "current_version": "0.1.12-beta",
   "os": "windows"
 }
 ```
@@ -792,7 +792,7 @@ Respuesta:
 {
   "update_available": true,
   "latest": {
-    "version": "0.1.11-beta",
+    "version": "0.1.12-beta",
     "download_url": "https://example.com/RacLauncher.zip",
     "checksum_sha256": "..."
   }
