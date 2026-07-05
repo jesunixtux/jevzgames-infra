@@ -55,7 +55,7 @@ if (request_is_post()) {
             $_SESSION['_generated_game_codes'] = $result;
             ActivityLogger::info('game_license_code_request_approved', ['user_id' => $userId, 'request_id' => (int) ($_POST['request_id'] ?? 0)]);
             flash('message', 'Solicitud aprobada. Codigos generados.');
-            redirect_to('/games-code/');
+            redirect_to('/games-code/?game_id=' . (int) ($result['game_id'] ?? 0));
         }
 
         if ($canManageAll && in_array($action, ['reject_request', 'revoke_request'], true)) {
@@ -109,6 +109,15 @@ $codes = $selectedGame ? GameCode::listCodes($selectedGameId, $userId, $canManag
 $myRequests = GameCode::listRequests(null, $userId);
 $adminRequests = $canManageAll ? GameCode::listRequests() : [];
 $isExternal = $selectedGame && (string) ($selectedGame['source_type'] ?? 'internal') === 'external';
+$renderPreviews = static function (?string $previews): string {
+    $previews = trim((string) $previews);
+    if ($previews === '') {
+        return '<span class="muted">-</span>';
+    }
+
+    $items = array_filter(array_map('trim', explode(',', $previews)));
+    return implode('<br>', array_map(static fn (string $preview): string => '<code>' . e($preview) . '</code>', $items));
+};
 
 Page::header(i18n_text('Codigos de juegos', 'Game codes'));
 ?>
@@ -126,6 +135,9 @@ Page::header(i18n_text('Codigos de juegos', 'Game codes'));
     <section class="panel">
         <h2><?= e(i18n_text('Codigos generados', 'Generated codes')) ?></h2>
         <p class="muted"><?= e(i18n_text('Copia estos codigos ahora; despues solo se guarda el preview y hash.', 'Copy these codes now; later only preview and hash are stored.')) ?></p>
+        <?php if (!empty($generated['batch_id'])): ?>
+            <p class="muted">Batch: <code><?= e((string) $generated['batch_id']) ?></code></p>
+        <?php endif; ?>
         <pre class="code-view"><?= e(implode(PHP_EOL, array_map('strval', $generated['codes']))) ?></pre>
     </section>
 <?php endif; ?>
@@ -233,16 +245,27 @@ Page::header(i18n_text('Codigos de juegos', 'Game codes'));
     <h2><?= e(i18n_text('Mis solicitudes', 'My requests')) ?></h2>
     <div class="table-wrap">
         <table class="data-table">
-            <thead><tr><th><?= e(i18n_text('Juego', 'Game')) ?></th><th><?= e(i18n_text('Copias', 'Copies')) ?></th><th><?= e(i18n_text('Estado', 'Status')) ?></th><th><?= e(i18n_text('Motivo', 'Reason')) ?></th></tr></thead>
+            <thead>
+                <tr>
+                    <th><?= e(i18n_text('Juego', 'Game')) ?></th>
+                    <th><?= e(i18n_text('Copias', 'Copies')) ?></th>
+                    <th><?= e(i18n_text('Estado', 'Status')) ?></th>
+                    <th>Batch</th>
+                    <th>Previews</th>
+                    <th><?= e(i18n_text('Motivo', 'Reason')) ?></th>
+                </tr>
+            </thead>
             <tbody>
                 <?php if ($myRequests === []): ?>
-                    <tr><td colspan="4"><?= e(i18n_text('No tienes solicitudes.', 'You have no requests.')) ?></td></tr>
+                    <tr><td colspan="6"><?= e(i18n_text('No tienes solicitudes.', 'You have no requests.')) ?></td></tr>
                 <?php endif; ?>
                 <?php foreach ($myRequests as $request): ?>
                     <tr>
                         <td><?= e($request['game_name']) ?></td>
                         <td><?= e($request['quantity']) ?></td>
                         <td><?= e($request['status']) ?></td>
+                        <td><code><?= e($request['batch_id'] ?? '') ?></code></td>
+                        <td><?= $renderPreviews($request['code_previews'] ?? null) ?></td>
                         <td><?= e($request['response_reason'] ?? '') ?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -262,12 +285,13 @@ Page::header(i18n_text('Codigos de juegos', 'Game codes'));
                         <th><?= e(i18n_text('Usuario', 'User')) ?></th>
                         <th><?= e(i18n_text('Copias', 'Copies')) ?></th>
                         <th><?= e(i18n_text('Estado', 'Status')) ?></th>
+                        <th>Previews</th>
                         <th><?= e(i18n_text('Acciones', 'Actions')) ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($adminRequests === []): ?>
-                        <tr><td colspan="5"><?= e(i18n_text('No hay solicitudes.', 'There are no requests.')) ?></td></tr>
+                        <tr><td colspan="6"><?= e(i18n_text('No hay solicitudes.', 'There are no requests.')) ?></td></tr>
                     <?php endif; ?>
                     <?php foreach ($adminRequests as $request): ?>
                         <tr>
@@ -275,6 +299,7 @@ Page::header(i18n_text('Codigos de juegos', 'Game codes'));
                             <td>@<?= e($request['requester_username']) ?></td>
                             <td><?= e($request['quantity']) ?></td>
                             <td><?= e($request['status']) ?><br><span class="muted"><?= e($request['response_reason'] ?? '') ?></span></td>
+                            <td><?= $renderPreviews($request['code_previews'] ?? null) ?></td>
                             <td class="table-actions">
                                 <?php if ($request['status'] === 'pending'): ?>
                                     <form method="post">

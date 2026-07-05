@@ -139,13 +139,16 @@ final class GameCode
         $stmt = Database::pdo()->prepare(
             'SELECT r.*, g.name AS game_name, g.slug AS game_slug, g.source_type,
                     u.username AS requester_username, reviewer.username AS reviewer_username,
-                    codes.code_count
+                    codes.code_count,
+                    codes.code_previews
              FROM game_code_requests r
              INNER JOIN games g ON g.id = r.game_id
              INNER JOIN users u ON u.id = r.requester_user_id
              LEFT JOIN users reviewer ON reviewer.id = r.reviewed_by
              LEFT JOIN (
-                SELECT request_id, COUNT(*) AS code_count
+                SELECT request_id,
+                       COUNT(*) AS code_count,
+                       GROUP_CONCAT(code_preview ORDER BY id ASC SEPARATOR ", ") AS code_previews
                 FROM game_license_codes
                 GROUP BY request_id
              ) codes ON codes.request_id = r.id
@@ -217,6 +220,9 @@ final class GameCode
             $adminUserId,
             ['request_id' => $requestId, 'batch_id' => $batchId]
         );
+
+        $codes['game_id'] = (int) $request['game_id'];
+        $codes['request_id'] = $requestId;
 
         return $codes;
     }
@@ -386,6 +392,7 @@ final class GameCode
         self::ensureTables();
         $batchId = 'jvg_batch_' . bin2hex(random_bytes(10));
         $codes = [];
+        $previews = [];
         $stmt = Database::pdo()->prepare(
             'INSERT INTO game_license_codes
                 (game_id, batch_id, code_hash, code_preview, source, request_id, status, created_by, created_at, updated_at)
@@ -413,11 +420,13 @@ final class GameCode
                 throw $exception;
             }
             $codes[] = $code;
+            $previews[] = self::codePreview($code);
         }
 
         return [
             'batch_id' => $batchId,
             'codes' => $codes,
+            'previews' => $previews,
             'quantity' => count($codes),
         ];
     }
