@@ -170,6 +170,11 @@ final class Inventory
             throw new RuntimeException('Codigo requerido.');
         }
 
+        $gameCodeResult = GameCode::redeem($userId, $code);
+        if ($gameCodeResult !== null) {
+            return $gameCodeResult;
+        }
+
         $pdo = Database::pdo();
         $pdo->beginTransaction();
         try {

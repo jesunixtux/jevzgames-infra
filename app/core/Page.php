@@ -92,6 +92,8 @@ final class Page
                 <a href="<?= \e(\url('/achievements/')) ?>"><?= \e(\t('nav.achievements')) ?></a>
                 <a href="<?= \e(\url('/inventory/')) ?>"><?= \e(\t('nav.inventory')) ?></a>
                 <a href="<?= \e(\url('/friends/')) ?>"><?= \e(\t('nav.friends')) ?></a>
+                <a href="<?= \e(\url('/family/')) ?>"><?= \e(\t('nav.family')) ?></a>
+                <a href="<?= \e(\url('/groups/')) ?>"><?= \e(\t('nav.groups')) ?></a>
                 <a href="<?= \e(\url('/messages/')) ?>"><?= \e(\t('nav.messages')) ?></a>
                 <a
                     class="nav__notifications <?= $unreadNotifications > 0 ? 'nav__alert' : '' ?>"
@@ -107,6 +109,7 @@ final class Page
                 <a href="<?= \e(\url('/support/')) ?>"><?= \e(\t('nav.support')) ?></a>
                 <?php if (Auth::hasRole(['developer', 'developer-extern', 'admin', 'superroot'])): ?>
                     <a href="<?= \e(\url('/tutorials/')) ?>"><?= \e(\t('nav.tutorials')) ?></a>
+                    <a href="<?= \e(\url('/apis-read/')) ?>"><?= \e(\t('nav.apis_read')) ?></a>
                 <?php endif; ?>
                 <?php if (Auth::hasRole(['developer-extern', 'admin', 'superroot'])): ?>
                     <a href="<?= \e(\url('/external-games/')) ?>"><?= \e(\t('nav.external_games')) ?></a>

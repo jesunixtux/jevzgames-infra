@@ -12,21 +12,24 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+Add-Type -AssemblyName Microsoft.VisualBasic
 
 $ErrorActionPreference = "Stop"
 
 $AppName = "RacLauncher"
 $BaseUrl = "https://racacount.jevzgames.com"
-$AppVersion = "0.1.9-beta"
+$AppVersion = "0.1.10-beta"
 
 $AppData = Join-Path $env:APPDATA $AppName
 $GamesDir = Join-Path $AppData "games"
 $DownloadsDir = Join-Path $AppData "downloads"
+$UpdatesDir = Join-Path $AppData "updates"
 $SessionFile = Join-Path $AppData "session.json"
 $LibraryCacheFile = Join-Path $AppData "library-cache.json"
 $ConfigFile = Join-Path $AppData "config.json"
+$LauncherDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 
-New-Item -ItemType Directory -Force -Path $AppData, $GamesDir, $DownloadsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $AppData, $GamesDir, $DownloadsDir, $UpdatesDir | Out-Null
 
 function Save-Config {
     @{
@@ -167,7 +170,7 @@ function Set-Status($text) {
 function Set-Busy($busy) {
     $script:IsBusy = $busy
 
-    foreach ($btn in @($script:LogoutBtn, $script:RefreshBtn, $script:InstallBtn, $script:PlayBtn, $script:OpenFolderBtn, $script:MessagesBtn)) {
+    foreach ($btn in @($script:LogoutBtn, $script:RefreshBtn, $script:InstallBtn, $script:PlayBtn, $script:OpenFolderBtn, $script:MessagesBtn, $script:AchievementsBtn, $script:RedeemBtn, $script:GroupsBtn, $script:FamilyBtn, $script:CloudSyncBtn)) {
         if ($btn) { $btn.Enabled = -not $busy }
     }
 
@@ -344,6 +347,65 @@ function Format-Bytes($bytes) {
     return "$bytes B"
 }
 
+function Get-FileSha256($path) {
+    if (-not (Test-Path $path)) { return "" }
+    try { return (Get-FileHash -Path $path -Algorithm SHA256).Hash.ToLowerInvariant() } catch { return "" }
+}
+
+function Test-DownloadedZip($zipPath, $build) {
+    if (-not (Test-Path $zipPath)) {
+        throw "El ZIP descargado no existe."
+    }
+
+    $file = Get-Item $zipPath
+    if ($file.Length -le 0) {
+        throw "El ZIP descargado esta vacio."
+    }
+
+    if ($build -and $build.size_bytes) {
+        $expectedSize = [int64]$build.size_bytes
+        if ($expectedSize -gt 0 -and $file.Length -ne $expectedSize) {
+            throw "Tamano invalido. Esperado $expectedSize bytes, recibido $($file.Length) bytes."
+        }
+    }
+
+    if ($build -and $build.checksum) {
+        $expected = ([string]$build.checksum).Trim().ToLowerInvariant()
+        if ($expected.Length -eq 64) {
+            $actual = Get-FileSha256 $zipPath
+            if ($actual -ne $expected) {
+                throw "SHA-256 invalido. Esperado $expected, recibido $actual."
+            }
+        }
+    }
+
+    try {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+        $zip.Dispose()
+    } catch {
+        throw "El archivo descargado no es un ZIP valido: $($_.Exception.Message)"
+    }
+}
+
+function Remove-DownloadedZip($zipPath) {
+    try {
+        if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+    } catch {
+        Log "No se pudo borrar ZIP temporal: $($_.Exception.Message)"
+    }
+}
+
+function Resolve-CloudPath($hint, $slug) {
+    $path = [string]$hint
+    if ([string]::IsNullOrWhiteSpace($path)) { return "" }
+    $path = $path.Replace("{slug}", $slug)
+    $path = [Environment]::ExpandEnvironmentVariables($path)
+    if (-not [System.IO.Path]::IsPathRooted($path)) {
+        $path = Join-Path (Get-GameInstallDir $slug) $path
+    }
+    return $path
+}
+
 
 function Send-PresenceOnline {
     if ($script:OfflineMode) { return }
@@ -365,6 +427,71 @@ function Send-PresenceInGame($slug) {
     }
 }
 
+function Sync-CloudForGame($game, $direction) {
+    if ($script:OfflineMode -or -not $game) { return }
+    $token = Get-Token
+    if (-not $token) { return }
+
+    $slug = Get-GameSlug $game
+    if ([string]::IsNullOrWhiteSpace($slug)) { return }
+
+    try {
+        $res = Api-Post "/api/client/cloud/configs/" @{ game_slug = $slug } $token
+        if (-not $res.success -or -not $res.data.configs) { return }
+
+        foreach ($cfg in $res.data.configs) {
+            $mode = if ($cfg.sync_mode) { ([string]$cfg.sync_mode).ToLowerInvariant() } else { "api_slot" }
+            if ($mode -ne "file_path") { continue }
+
+            $localPath = Resolve-CloudPath $cfg.local_path_hint $slug
+            if ([string]::IsNullOrWhiteSpace($localPath)) { continue }
+
+            $configKey = if ($cfg.config_key) { [string]$cfg.config_key } else { "default" }
+
+            if ($direction -eq "pull") {
+                $pull = Api-Post "/api/client/cloud/pull/" @{ game_slug = $slug; config_key = $configKey; slot = 1 } $token
+                if ($pull.success -and $pull.data.cloud_save -and $pull.data.cloud_save.found -and $pull.data.cloud_save.save -and $pull.data.cloud_save.save.content_base64) {
+                    $bytes = [Convert]::FromBase64String([string]$pull.data.cloud_save.save.content_base64)
+                    $dir = Split-Path $localPath -Parent
+                    if (-not [string]::IsNullOrWhiteSpace($dir)) {
+                        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+                    }
+                    [System.IO.File]::WriteAllBytes($localPath, $bytes)
+                    Log "Cloud pull OK: $slug/$configKey -> $localPath"
+                }
+            } elseif ($direction -eq "push") {
+                if (-not (Test-Path $localPath)) {
+                    Log "Cloud push omitido: no existe $localPath"
+                    continue
+                }
+
+                $file = Get-Item $localPath
+                $content = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($localPath))
+                $push = Api-Post "/api/client/cloud/push/" @{
+                    game_slug = $slug
+                    config_key = $configKey
+                    slot = 1
+                    content_base64 = $content
+                    local_path = $localPath
+                    mtime_utc = $file.LastWriteTimeUtc.ToString("o")
+                    metadata = @{
+                        source = "raclauncher"
+                        sync_mode = "file_path"
+                        local_path = $localPath
+                        local_mtime_utc = $file.LastWriteTimeUtc.ToString("o")
+                    }
+                } $token
+
+                if ($push.success) {
+                    Log "Cloud push OK: $slug/$configKey"
+                }
+            }
+        }
+    } catch {
+        Log "Cloud sync $direction fallido para ${slug}: $($_.Exception.Message)"
+    }
+}
+
 function Check-RunningGames {
     if (-not $script:RunningGames) { return }
 
@@ -379,6 +506,9 @@ function Check-RunningGames {
             $proc = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
 
             if ($null -eq $proc -or $proc.HasExited) {
+                if ($entry.game) {
+                    Sync-CloudForGame $entry.game "push"
+                }
                 $script:RunningGames.Remove($slug)
                 $changed = $true
                 Set-Status "$($entry.name) cerrado."
@@ -403,10 +533,13 @@ function Check-RunningGames {
 }
 
 function Install-Zip($zipPath, $installDir, $slug, $version, $exeRel, $name) {
-    Set-Status "Extrayendo $name..."
+    Set-Status "Verificando $name..."
     $script:ProgressBar.Style = "Marquee"
 
     try {
+        Test-DownloadedZip $zipPath $script:CurrentBuild
+        Set-Status "Extrayendo $name..."
+
         if (Test-Path $installDir) {
             Remove-Item $installDir -Recurse -Force
         }
@@ -422,6 +555,7 @@ function Install-Zip($zipPath, $installDir, $slug, $version, $exeRel, $name) {
         }
 
         Write-InstalledVersion $slug $version $exeRel $script:CurrentGame $script:CurrentBuild
+        Remove-DownloadedZip $zipPath
 
         $script:ProgressBar.Style = "Blocks"
         $script:ProgressBar.Value = 100
@@ -608,13 +742,21 @@ function Launch-Game($game) {
     }
 
     Send-PresenceInGame $slug
+    Sync-CloudForGame $game "pull"
 
     Set-Status "Ejecutando $name..."
-    $proc = Start-Process -FilePath $exeFull -WorkingDirectory (Split-Path $exeFull -Parent) -PassThru
+    $token = Get-Token
+    $launchArgs = @(
+        "--jevzgames-api=$BaseUrl",
+        "--jevzgames-game=$slug"
+    )
+    if ($token) { $launchArgs += "--jevzgames-token=$token" }
+    $proc = Start-Process -FilePath $exeFull -WorkingDirectory (Split-Path $exeFull -Parent) -ArgumentList $launchArgs -PassThru
 
     $script:RunningGames[$slug] = @{
         pid = $proc.Id
         name = $name
+        game = $game
         started_at = (Get-Date)
     }
 
@@ -680,6 +822,10 @@ function Update-ActionButtons {
     if ($script:InstallBtn) { $script:InstallBtn.Enabled = $hasGame -and (-not $script:OfflineMode) -and $hasZipBuild }
     if ($script:PlayBtn) { $script:PlayBtn.Enabled = $hasGame -and ((($installed -and ((-not $script:OfflineMode) -or $offlinePlayable)) -or ((-not $script:OfflineMode) -and $hasExternalBuild))) }
     if ($script:AchievementsBtn) { $script:AchievementsBtn.Enabled = $hasGame -and (-not $script:OfflineMode) }
+    if ($script:RedeemBtn) { $script:RedeemBtn.Enabled = -not $script:OfflineMode }
+    if ($script:GroupsBtn) { $script:GroupsBtn.Enabled = -not $script:OfflineMode }
+    if ($script:FamilyBtn) { $script:FamilyBtn.Enabled = -not $script:OfflineMode }
+    if ($script:CloudSyncBtn) { $script:CloudSyncBtn.Enabled = $hasGame -and (-not $script:OfflineMode) }
 }
 
 function Load-InstalledMetadata($slug) {
@@ -796,6 +942,7 @@ function Refresh-Library {
         try { Api-Post "/api/client/presence/" @{ status = "online" } $token | Out-Null } catch {}
         Refresh-ClientMe $token
         Start-AutoUpdates
+        Check-LauncherUpdate
     } catch {
         $cache = Load-LibraryCache
         if ($cache -and $cache.data) {
@@ -824,7 +971,7 @@ function Do-Login {
         $res = Api-Post "/api/client/login/" @{
             identity = $identity
             password = $password
-            client_name = "RacLauncher Beta"
+            client_name = "RacLauncher $AppVersion"
         }
 
         if (-not $res.success) { throw $res.message }
@@ -1276,12 +1423,233 @@ function Open-MessagesWindow {
     [void]$chat.Show($form)
 }
 
+function Redeem-CodeFromLauncher {
+    if ($script:OfflineMode) {
+        [System.Windows.Forms.MessageBox]::Show("Canjear codigos requiere conexion.", "Offline", "OK", "Information") | Out-Null
+        return
+    }
+
+    $token = Get-Token
+    if (-not $token) { return }
+
+    $code = [Microsoft.VisualBasic.Interaction]::InputBox("Codigo de juego u objeto:", "Canjear codigo", "")
+    $code = $code.Trim()
+    if ([string]::IsNullOrWhiteSpace($code)) { return }
+
+    try {
+        $res = Api-Post "/api/client/redeem/" @{ code = $code } $token
+        if (-not $res.success) { throw $res.message }
+        [System.Windows.Forms.MessageBox]::Show("Codigo canjeado correctamente.", "Canje", "OK", "Information") | Out-Null
+        Refresh-Library
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("No se pudo canjear el codigo.`r`n$($_.Exception.Message)", "Canje", "OK", "Error") | Out-Null
+    }
+}
+
+function Open-InfoListWindow($title, $text) {
+    $info = New-Object System.Windows.Forms.Form
+    $info.Text = $title
+    $info.Size = New-Object System.Drawing.Size(680, 480)
+    $info.StartPosition = "CenterParent"
+    $info.BackColor = [System.Drawing.Color]::FromArgb(25,25,30)
+    $info.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+    $box = New-Object System.Windows.Forms.TextBox
+    $box.Multiline = $true
+    $box.ReadOnly = $true
+    $box.ScrollBars = "Vertical"
+    $box.BackColor = [System.Drawing.Color]::FromArgb(38,38,45)
+    $box.ForeColor = [System.Drawing.Color]::White
+    $box.Location = New-Object System.Drawing.Point(16, 16)
+    $box.Size = New-Object System.Drawing.Size(630, 390)
+    $box.Text = $text
+    $info.Controls.Add($box)
+
+    $close = New-Object System.Windows.Forms.Button
+    $close.Text = "Cerrar"
+    $close.Location = New-Object System.Drawing.Point(540, 410)
+    $close.Size = New-Object System.Drawing.Size(105, 32)
+    $close.Add_Click({ $info.Close() })
+    $info.Controls.Add($close)
+
+    [void]$info.ShowDialog($form)
+}
+
+function Open-GroupsWindow {
+    if ($script:OfflineMode) {
+        [System.Windows.Forms.MessageBox]::Show("Grupos requiere conexion.", "Offline", "OK", "Information") | Out-Null
+        return
+    }
+
+    $token = Get-Token
+    if (-not $token) { return }
+
+    try {
+        $res = Api-Post "/api/client/groups/" @{} $token
+        if (-not $res.success) { throw $res.message }
+        $lines = New-Object System.Collections.Generic.List[string]
+        $lines.Add("Mis grupos")
+        $lines.Add("----------")
+        if ($res.data.my_groups) {
+            foreach ($group in $res.data.my_groups) {
+                $lines.Add("$($group.name) [$($group.visibility)] - miembros: $($group.member_count)")
+            }
+        } else {
+            $lines.Add("Sin grupos.")
+        }
+        $lines.Add("")
+        $lines.Add("Grupos publicos")
+        $lines.Add("---------------")
+        if ($res.data.public_groups) {
+            foreach ($group in $res.data.public_groups) {
+                $lines.Add("$($group.name) / $($group.slug) - miembros: $($group.member_count)")
+            }
+        } else {
+            $lines.Add("Sin grupos publicos.")
+        }
+        Open-InfoListWindow "RacLauncher - Grupos" ($lines -join "`r`n")
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("No se pudieron cargar grupos.`r`n$($_.Exception.Message)", "Grupos", "OK", "Error") | Out-Null
+    }
+}
+
+function Open-FamilyWindow {
+    if ($script:OfflineMode) {
+        [System.Windows.Forms.MessageBox]::Show("Family Sharing requiere conexion.", "Offline", "OK", "Information") | Out-Null
+        return
+    }
+
+    $token = Get-Token
+    if (-not $token) { return }
+
+    try {
+        $res = Api-Post "/api/client/family/" @{} $token
+        if (-not $res.success) { throw $res.message }
+        $lines = New-Object System.Collections.Generic.List[string]
+        $lines.Add("Family Sharing")
+        $lines.Add("--------------")
+        if ($res.data.family) {
+            foreach ($row in $res.data.family) {
+                $lines.Add("Owner: $($row.owner_username) | Miembro: $($row.member_username) | Estado: $($row.status)")
+            }
+        } else {
+            $lines.Add("No hay relaciones familiares configuradas.")
+        }
+        Open-InfoListWindow "RacLauncher - Family Sharing" ($lines -join "`r`n")
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("No se pudo cargar Family Sharing.`r`n$($_.Exception.Message)", "Family Sharing", "OK", "Error") | Out-Null
+    }
+}
+
+function Sync-SelectedGameCloud {
+    if ($script:OfflineMode) {
+        [System.Windows.Forms.MessageBox]::Show("Cloud sync requiere conexion.", "Offline", "OK", "Information") | Out-Null
+        return
+    }
+
+    $game = Selected-Game
+    if (-not $game) { return }
+
+    $result = [System.Windows.Forms.MessageBox]::Show(
+        "Si = subir save local al servidor.`r`nNo = bajar save del servidor al archivo local.",
+        "Cloud sync",
+        "YesNoCancel",
+        "Question"
+    )
+
+    if ($result -eq "Yes") {
+        Sync-CloudForGame $game "push"
+        [System.Windows.Forms.MessageBox]::Show("Sincronizacion de subida ejecutada. Revisa el log para detalles.", "Cloud sync", "OK", "Information") | Out-Null
+    } elseif ($result -eq "No") {
+        Sync-CloudForGame $game "pull"
+        [System.Windows.Forms.MessageBox]::Show("Sincronizacion de bajada ejecutada. Revisa el log para detalles.", "Cloud sync", "OK", "Information") | Out-Null
+    }
+}
+
+function Find-LauncherUpdateSource($stagingDir) {
+    $scriptFile = Get-ChildItem -Path $stagingDir -Filter "RacLauncher.ps1" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($scriptFile) { return $scriptFile.Directory.FullName }
+    return $stagingDir
+}
+
+function Apply-LauncherRelease($release) {
+    if (-not $release -or -not $release.download_url) { return }
+
+    $version = [string]$release.version
+    $zipPath = Join-Path $UpdatesDir ("RacLauncher-" + $version + ".zip")
+    $stagingDir = Join-Path $UpdatesDir ("RacLauncher-" + $version)
+
+    try {
+        if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+        if (Test-Path $stagingDir) { Remove-Item $stagingDir -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
+
+        Set-Status "Descargando update del launcher $version..."
+        $wc = New-Object System.Net.WebClient
+        $wc.DownloadFile([string]$release.download_url, $zipPath)
+
+        if ($release.checksum_sha256) {
+            $expected = ([string]$release.checksum_sha256).Trim().ToLowerInvariant()
+            $actual = Get-FileSha256 $zipPath
+            if ($expected.Length -eq 64 -and $actual -ne $expected) {
+                throw "SHA-256 invalido para update del launcher."
+            }
+        }
+
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $stagingDir)
+        Remove-DownloadedZip $zipPath
+        $sourceDir = Find-LauncherUpdateSource $stagingDir
+        $cmdPath = Join-Path $UpdatesDir "Apply-RacLauncherUpdate.cmd"
+        $runCmd = Join-Path $LauncherDir "Run-RacLauncher.cmd"
+        $restartLine = if (Test-Path $runCmd) { 'start "" "' + $runCmd + '"' } else { 'start "" powershell -ExecutionPolicy Bypass -File "' + (Join-Path $LauncherDir "RacLauncher.ps1") + '"' }
+
+        @(
+            "@echo off",
+            "timeout /t 2 /nobreak >nul",
+            "xcopy `"$sourceDir\*`" `"$LauncherDir\`" /E /Y /I >nul",
+            $restartLine
+        ) | Set-Content -Path $cmdPath -Encoding ASCII
+
+        [System.Windows.Forms.MessageBox]::Show("El launcher se actualizara ahora y se reiniciara.", "Update launcher", "OK", "Information") | Out-Null
+        Start-Process -FilePath $cmdPath
+        $form.Close()
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("No se pudo actualizar el launcher.`r`n$($_.Exception.Message)", "Update launcher", "OK", "Error") | Out-Null
+    }
+}
+
+function Check-LauncherUpdate {
+    if ($script:OfflineMode -or $script:LauncherUpdateChecked) { return }
+    $script:LauncherUpdateChecked = $true
+
+    $token = Get-Token
+    if (-not $token) { return }
+
+    try {
+        $res = Api-Post "/api/client/launcher/update-check/" @{ current_version = $AppVersion; os = "windows" } $token
+        if (-not $res.success -or -not $res.data.update_available -or -not $res.data.latest) { return }
+
+        $release = $res.data.latest
+        $answer = [System.Windows.Forms.MessageBox]::Show(
+            "Hay una nueva version del launcher: $($release.version).`r`nQuieres descargarla y aplicarla ahora?",
+            "Update launcher",
+            "YesNo",
+            "Information"
+        )
+        if ($answer -eq "Yes") {
+            Apply-LauncherRelease $release
+        }
+    } catch {
+        Log "No se pudo comprobar update del launcher: $($_.Exception.Message)"
+    }
+}
+
 
 Save-Config
 
 # UI
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "RacLauncher Beta 0.1.8"
+$form.Text = "RacLauncher Beta 0.1.10"
 $form.Size = New-Object System.Drawing.Size(960, 620)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 24)
@@ -1438,7 +1806,7 @@ $script:LibraryPanel.Controls.Add($script:GamesList)
 $actionsPanel = New-Object System.Windows.Forms.Panel
 $actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(35,35,42)
 $actionsPanel.Location = New-Object System.Drawing.Point(700, 125)
-$actionsPanel.Size = New-Object System.Drawing.Size(210, 260)
+$actionsPanel.Size = New-Object System.Drawing.Size(210, 300)
 $script:LibraryPanel.Controls.Add($actionsPanel)
 
 $actionTitle = New-Object System.Windows.Forms.Label
@@ -1458,24 +1826,52 @@ $actionsPanel.Controls.Add($script:InstallBtn)
 
 $script:PlayBtn = New-Object System.Windows.Forms.Button
 $script:PlayBtn.Text = "Jugar"
-$script:PlayBtn.Location = New-Object System.Drawing.Point(20, 100)
+$script:PlayBtn.Location = New-Object System.Drawing.Point(20, 90)
 $script:PlayBtn.Size = New-Object System.Drawing.Size(170, 36)
 $script:PlayBtn.Add_Click({ Do-Play })
 $actionsPanel.Controls.Add($script:PlayBtn)
 
 $script:MessagesBtn = New-Object System.Windows.Forms.Button
 $script:MessagesBtn.Text = "Mensajes"
-$script:MessagesBtn.Location = New-Object System.Drawing.Point(20, 148)
+$script:MessagesBtn.Location = New-Object System.Drawing.Point(20, 128)
 $script:MessagesBtn.Size = New-Object System.Drawing.Size(170, 36)
 $script:MessagesBtn.Add_Click({ Open-MessagesWindow })
 $actionsPanel.Controls.Add($script:MessagesBtn)
 
 $script:AchievementsBtn = New-Object System.Windows.Forms.Button
 $script:AchievementsBtn.Text = "Logros"
-$script:AchievementsBtn.Location = New-Object System.Drawing.Point(20, 196)
+$script:AchievementsBtn.Location = New-Object System.Drawing.Point(20, 166)
 $script:AchievementsBtn.Size = New-Object System.Drawing.Size(170, 36)
 $script:AchievementsBtn.Add_Click({ Open-AchievementsWindow })
 $actionsPanel.Controls.Add($script:AchievementsBtn)
+
+$script:RedeemBtn = New-Object System.Windows.Forms.Button
+$script:RedeemBtn.Text = "Canjear"
+$script:RedeemBtn.Location = New-Object System.Drawing.Point(20, 212)
+$script:RedeemBtn.Size = New-Object System.Drawing.Size(80, 30)
+$script:RedeemBtn.Add_Click({ Redeem-CodeFromLauncher })
+$actionsPanel.Controls.Add($script:RedeemBtn)
+
+$script:CloudSyncBtn = New-Object System.Windows.Forms.Button
+$script:CloudSyncBtn.Text = "Cloud"
+$script:CloudSyncBtn.Location = New-Object System.Drawing.Point(110, 212)
+$script:CloudSyncBtn.Size = New-Object System.Drawing.Size(80, 30)
+$script:CloudSyncBtn.Add_Click({ Sync-SelectedGameCloud })
+$actionsPanel.Controls.Add($script:CloudSyncBtn)
+
+$script:GroupsBtn = New-Object System.Windows.Forms.Button
+$script:GroupsBtn.Text = "Grupos"
+$script:GroupsBtn.Location = New-Object System.Drawing.Point(20, 250)
+$script:GroupsBtn.Size = New-Object System.Drawing.Size(80, 30)
+$script:GroupsBtn.Add_Click({ Open-GroupsWindow })
+$actionsPanel.Controls.Add($script:GroupsBtn)
+
+$script:FamilyBtn = New-Object System.Windows.Forms.Button
+$script:FamilyBtn.Text = "Family"
+$script:FamilyBtn.Location = New-Object System.Drawing.Point(110, 250)
+$script:FamilyBtn.Size = New-Object System.Drawing.Size(80, 30)
+$script:FamilyBtn.Add_Click({ Open-FamilyWindow })
+$actionsPanel.Controls.Add($script:FamilyBtn)
 
 $progressLabel = New-Object System.Windows.Forms.Label
 $progressLabel.Text = "Descarga / instalacion"
@@ -1525,6 +1921,7 @@ $script:CurrentChatUserId = $null
 $script:Achievements = @()
 $script:AchievementsCurrentGame = $null
 $script:AchievementsForm = $null
+$script:LauncherUpdateChecked = $false
 
 $script:GameStateTimer = New-Object System.Windows.Forms.Timer
 $script:GameStateTimer.Interval = 5000

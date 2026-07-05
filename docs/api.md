@@ -721,6 +721,95 @@ Body:
 
 Marca como leidos los mensajes recibidos en esa conversacion.
 
+## Client APIs 1.2
+
+### POST `/api/client/cloud/configs/`
+
+Devuelve configuraciones cloud activas para un juego de la biblioteca del usuario. `sync_mode=api_slot` conserva el modo viejo por slots; `sync_mode=file_path` indica al launcher una ruta local sugerida para sincronizar archivos de guardado.
+
+```json
+{
+  "game_slug": "jumpfall"
+}
+```
+
+### POST `/api/client/cloud/push/`
+
+Sube una partida desde el launcher. Para `file_path`, el launcher envia el archivo en base64:
+
+```json
+{
+  "game_slug": "jumpfall",
+  "config_key": "default",
+  "slot": 1,
+  "content_base64": "...",
+  "local_path": "%USERPROFILE%/Saved Games/JumpFall/save.dat",
+  "mtime_utc": "2026-07-05T12:00:00Z"
+}
+```
+
+### POST `/api/client/cloud/pull/`
+
+Recupera el slot cloud para escribirlo en el archivo local configurado:
+
+```json
+{
+  "game_slug": "jumpfall",
+  "config_key": "default",
+  "slot": 1
+}
+```
+
+### POST `/api/client/groups/`
+
+Lista grupos del usuario y grupos publicos para el launcher:
+
+```json
+{
+  "my_groups": [],
+  "public_groups": []
+}
+```
+
+### POST `/api/client/family/`
+
+Lista relaciones de Family Sharing del usuario. Los juegos compartidos por familia tambien aparecen en `owned_games` como `shared_from_family=true`.
+
+### POST `/api/client/launcher/update-check/`
+
+Consulta el repositorio de releases del launcher configurado desde `/client/` por Superroot:
+
+```json
+{
+  "current_version": "0.1.10-beta",
+  "os": "windows"
+}
+```
+
+Respuesta:
+
+```json
+{
+  "update_available": true,
+  "latest": {
+    "version": "0.1.11-beta",
+    "download_url": "https://example.com/RacLauncher.zip",
+    "checksum_sha256": "..."
+  }
+}
+```
+
+### Codigos 1.2
+
+- Codigos de objetos/inventario: Admin > Codigos, siguen usando `redeemable_codes`.
+- Codigos de licencia de juego: `/games-code/`, tabla `game_license_codes`, maximo 100 por batch.
+- Juegos externos: el owner solicita copias; Admin/Superroot aprueba, rechaza o revoca. Rechazar/revocar exige motivo y crea notificacion para el solicitante.
+- El endpoint de canje es el mismo: `POST /api/client/redeem/` o `POST /api/redeem/`.
+
+### Playtime y presencia
+
+`POST /api/client/presence/` con `status=in_game` inicia contador de horas en `user_games.total_play_seconds`. Al volver a `online`, `offline` o logout, el contador se cierra. El perfil publico muestra online/jugando/offline y horas si la privacidad permite ver juegos.
+
 ### POST `/api/client/logout/`
 
 Revoca el token del cliente actual.

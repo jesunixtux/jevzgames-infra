@@ -7,6 +7,7 @@ use App\Core\Page;
 use App\Models\Achievement;
 use App\Models\Friend;
 use App\Models\Game;
+use App\Models\Playtime;
 use App\Models\Presence;
 use App\Models\PublicProfile;
 use App\Models\SocialSettings;
@@ -129,9 +130,42 @@ $canSeeGames = $isProfilePublic || $isSelf || SocialSettings::canSeePrivateSecti
 $canSeeAchievements = $isProfilePublic || $isSelf || SocialSettings::canSeePrivateSection($targetId, $viewerId, 'achievements');
 $canSeeFriends = $isProfilePublic || $isSelf || SocialSettings::canSeePrivateSection($targetId, $viewerId, 'friends');
 $presence = Presence::forUser($targetId);
+$playedGames = $canSeeGames ? Playtime::rowsForUser($targetId) : [];
+$playedByGameId = [];
+foreach ($playedGames as $playedGame) {
+    $playedByGameId[(int) $playedGame['game_id']] = $playedGame;
+}
 $linkedGames = $canSeeGames ? array_values(array_filter(Game::userLinks($targetId), static function (array $game): bool {
     return in_array((string) $game['status'], Game::visibleStatuses(), true);
 })) : [];
+$visibleGames = $linkedGames;
+$visibleGameIds = [];
+foreach ($visibleGames as $game) {
+    $visibleGameIds[(int) $game['game_id']] = true;
+}
+foreach ($playedGames as $playedGame) {
+    $playedGameId = (int) $playedGame['game_id'];
+    if (!isset($visibleGameIds[$playedGameId])) {
+        $visibleGames[] = [
+            'game_id' => $playedGameId,
+            'name' => (string) $playedGame['name'],
+            'slug' => (string) $playedGame['slug'],
+            'status' => 'Jugado',
+            'playtime_only' => true,
+        ];
+        $visibleGameIds[$playedGameId] = true;
+    }
+}
+$formatPlaytime = static function (int $seconds): string {
+    if ($seconds < 60) {
+        return $seconds . 's';
+    }
+    if ($seconds < 3600) {
+        return (int) floor($seconds / 60) . ' min';
+    }
+
+    return number_format($seconds / 3600, 1) . ' h';
+};
 $unlockedAchievements = $canSeeAchievements ? Achievement::unlockedForUser($targetId) : [];
 $achievementPoints = array_sum(array_map(static fn (array $achievement): int => (int) $achievement['points'], $unlockedAchievements));
 $canSeeAchievementMeta = Auth::hasRole(['admin', 'superroot', 'developer']);
@@ -270,9 +304,14 @@ Page::header('@' . (string) $profile['username']);
         <?php endif; ?>
         <?php if ($canSeeGames): ?>
             <article class="tile metric-tile">
-                <span class="metric"><?= e(count($linkedGames)) ?></span>
+                <span class="metric"><?= e(count($visibleGames)) ?></span>
                 <h2>Juegos</h2>
-                <p class="muted">Vinculados.</p>
+                <p class="muted">Jugados o con licencia.</p>
+            </article>
+            <article class="tile metric-tile">
+                <span class="metric"><?= e($formatPlaytime(array_sum(array_map(static fn (array $row): int => (int) $row['total_play_seconds'], $playedGames)))) ?></span>
+                <h2>Horas jugadas</h2>
+                <p class="muted">Tiempo registrado desde el launcher.</p>
             </article>
         <?php endif; ?>
     </section>
@@ -314,14 +353,18 @@ Page::header('@' . (string) $profile['username']);
             <?php if ($canSeeGames): ?>
                 <article class="panel">
                     <h2>Juegos</h2>
-                    <?php if ($linkedGames === []): ?>
+                    <?php if ($visibleGames === []): ?>
                         <p class="muted">No hay juegos vinculados visibles.</p>
                     <?php else: ?>
                         <div class="compact-list">
-                            <?php foreach ($linkedGames as $game): ?>
+                            <?php foreach ($visibleGames as $game): ?>
                                 <div class="compact-row">
                                     <div>
+                                        <?php $played = $playedByGameId[(int) $game['game_id']] ?? null; ?>
                                         <strong><?= e($game['name']) ?></strong><br>
+                                        <?php if ($played && (int) $played['total_play_seconds'] > 0): ?>
+                                            <span class="muted"><?= e(i18n_text('Tiempo jugado', 'Playtime')) ?>: <?= e($formatPlaytime((int) $played['total_play_seconds'])) ?></span><br>
+                                        <?php endif; ?>
                                         <span class="muted"><code><?= e($game['slug']) ?></code> · <?= e(Game::statusLabel((string) $game['status'])) ?></span>
                                     </div>
                                 </div>

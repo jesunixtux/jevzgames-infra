@@ -492,6 +492,7 @@ Page::header('Admin');
                             </td>
                             <td class="table-actions">
                                 <a class="button button--secondary" href="<?= e(url('/admin/?section=games&edit_game=' . (int) $game['id'])) ?>">Editar</a>
+                                <a class="button button--secondary" href="<?= e(url('/games-code/?game_id=' . (int) $game['id'])) ?>">Codigos</a>
                                 <form method="post">
                                     <?= Csrf::field() ?>
                                     <input type="hidden" name="action" value="test_game_database">
@@ -1179,6 +1180,28 @@ Page::header('Admin');
                     <input type="checkbox" name="auto_sync" value="1" <?= !empty($editingCloudConfig) ? (!empty($editingCloudConfig['auto_sync']) ? 'checked' : '') : 'checked' ?>>
                     Auto sync
                 </label>
+                <div class="field">
+                    <label for="cloud_sync_mode">Modo sync</label>
+                    <select id="cloud_sync_mode" name="sync_mode">
+                        <?php foreach (['api_slot' => 'Legacy API slot', 'file_path' => 'Steam-like file path'] as $value => $label): ?>
+                            <option value="<?= e($value) ?>" <?= (($editingCloudConfig['sync_mode'] ?? 'api_slot') === $value) ? 'selected' : '' ?>><?= e($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="cloud_conflict_policy">Conflictos</label>
+                    <select id="cloud_conflict_policy" name="conflict_policy">
+                        <?php foreach (['newest', 'manual', 'server_wins', 'client_wins'] as $policy): ?>
+                            <option value="<?= e($policy) ?>" <?= (($editingCloudConfig['conflict_policy'] ?? 'newest') === $policy) ? 'selected' : '' ?>><?= e($policy) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="cloud_local_path_hint">Ruta local del savegame</label>
+                <input id="cloud_local_path_hint" name="local_path_hint" value="<?= e($editingCloudConfig['local_path_hint'] ?? '') ?>" maxlength="500" placeholder="%USERPROFILE%/Saved Games/Game/save.dat">
+                <p class="muted">Usado por el launcher en modo file_path. El modo viejo por API/slot sigue disponible.</p>
             </div>
 
             <div class="field">
@@ -1205,6 +1228,7 @@ Page::header('Admin');
                         <th>Juego</th>
                         <th>Slots</th>
                         <th>Tamano</th>
+                        <th>Sync</th>
                         <th>Estado</th>
                         <th>Uso</th>
                         <th>Acciones</th>
@@ -1212,7 +1236,7 @@ Page::header('Admin');
                 </thead>
                 <tbody>
                     <?php if ($cloudConfigs === []): ?>
-                        <tr><td colspan="7">No hay configs cloud creadas.</td></tr>
+                        <tr><td colspan="8">No hay configs cloud creadas.</td></tr>
                     <?php endif; ?>
                     <?php foreach ($cloudConfigs as $cloudConfig): ?>
                         <tr>
@@ -1226,6 +1250,10 @@ Page::header('Admin');
                             </td>
                             <td><?= e($cloudConfig['max_slots']) ?></td>
                             <td><?= e($cloudConfig['max_bytes']) ?> bytes</td>
+                            <td>
+                                <?= e($cloudConfig['sync_mode'] ?? 'api_slot') ?><br>
+                                <span class="muted"><?= e($cloudConfig['local_path_hint'] ?? '') ?></span>
+                            </td>
                             <td><?= e($cloudConfig['status']) ?></td>
                             <td><?= e($cloudConfig['save_count'] ?? 0) ?> saves / <?= e($cloudConfig['player_count'] ?? 0) ?> jugadores</td>
                             <td class="table-actions">
@@ -1296,7 +1324,7 @@ Page::header('Admin');
             <div class="field">
                 <label for="reward_json">Recompensa JSON</label>
                 <textarea id="reward_json" name="reward_json" rows="5" placeholder='{"item":"skin_blue","image_path":"/uploads/items/skin_blue.png"}'></textarea>
-                <p class="muted">Para canjear juegos usa <code>reward_type=game</code> con <code>{"game_slug":"jumpfall"}</code> o asocia el codigo a un juego.</p>
+                <p class="muted">Este apartado queda para codigos de objetos, inventario y recompensas. Las licencias de juegos se generan desde <a href="<?= e(url('/games-code/')) ?>">Codigos de juegos</a>.</p>
             </div>
             <div class="actions">
                 <button type="submit">Crear codigo</button>

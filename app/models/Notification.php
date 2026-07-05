@@ -13,26 +13,25 @@ final class Notification
         Friend::ensureTables();
         Community::ensureTables();
         SocialSettings::ensureTables();
+        SystemNotification::ensureTables();
     }
 
     public static function create(int $userId, string $type, string $title, string $body = '', string $targetUrl = '', ?int $actorUserId = null, array $data = []): int
     {
-        return 0;
+        return SystemNotification::create($userId, $type, $title, $body, $targetUrl, $actorUserId, $data);
     }
 
     public static function unreadCount(int $userId): int
     {
-        return count(self::listForUser($userId));
+        return count(self::dynamicItems($userId)) + SystemNotification::unreadCount($userId);
     }
 
     public static function listForUser(int $userId, int $limit = 100): array
     {
         self::ensureTables();
         $items = array_merge(
-            self::messageItems($userId),
-            self::friendRequestItems($userId),
-            self::friendAcceptedItems($userId),
-            self::commentItems($userId)
+            SystemNotification::listForUser($userId, $limit),
+            self::dynamicItems($userId)
         );
 
         usort($items, static function (array $a, array $b): int {
@@ -40,6 +39,16 @@ final class Notification
         });
 
         return array_slice($items, 0, max(1, min(200, $limit)));
+    }
+
+    private static function dynamicItems(int $userId): array
+    {
+        return array_merge(
+            self::messageItems($userId),
+            self::friendRequestItems($userId),
+            self::friendAcceptedItems($userId),
+            self::commentItems($userId)
+        );
     }
 
     public static function findForUser(int $userId, string|int $notificationId): ?array
@@ -61,6 +70,10 @@ final class Notification
             DirectMessage::markThreadRead((int) substr($notificationId, 3), $userId);
             return;
         }
+        if (str_starts_with($notificationId, 'sys_')) {
+            SystemNotification::markRead($userId, (int) substr($notificationId, 4));
+            return;
+        }
 
         self::hide($userId, $notificationId);
     }
@@ -68,6 +81,7 @@ final class Notification
     public static function markAllRead(int $userId): void
     {
         DirectMessage::markAllRead($userId);
+        SystemNotification::markAllRead($userId);
         $_SESSION['_session_notifications_comment_seen_at'][$userId] = date('Y-m-d H:i:s');
 
         foreach (self::friendRequestItems($userId, false) as $item) {

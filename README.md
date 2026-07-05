@@ -29,6 +29,10 @@ La primera fase deja una base funcional y simple:
 - Publish on Games, Workshop y cliente tipo Steam configurables desde Superroot.
 - Juegos externos con base dedicada opcional, builds propias y versiones que abren Steam u otra plataforma.
 - APIs de cliente para biblioteca, presencia, mensajes y logros del launcher.
+- Codigos de licencia de juegos separados de codigos de objetos, con solicitudes para juegos externos.
+- Family Sharing, grupos, horas jugadas y juegos compartidos en biblioteca del launcher.
+- Cloud sync tipo Steam por ruta de savegame configurable, conservando el modo viejo por slots.
+- Repositorio de releases del launcher y endpoint de auto-update.
 - SDK Unity importable para usar las APIs del launcher y mostrar desbloqueos de logros en pantalla.
 - Esquema SQL preparado para usuarios, juegos, roles, codigos, soporte, integraciones y API keys.
 
@@ -436,7 +440,7 @@ Si el EULA esta marcado como requerido, el registro pide aceptarlo. Cada idioma 
 
 ## Inventario y canjes
 
-Los codigos se crean en Admin y se canjean desde:
+Los codigos de objetos/inventario se crean en Admin y se canjean desde:
 
 ```text
 /redeem/
@@ -455,6 +459,14 @@ Tambien puede entregar una licencia de juego:
 ```json
 {"game_slug":"jumpfall"}
 ```
+
+Desde la version 1.2, las licencias de juegos tienen su propio apartado:
+
+```text
+/games-code/
+```
+
+Cada juego interno puede generar hasta 100 codigos por batch. Los juegos externos solicitan copias desde `/games-code/`; Admin o Superroot aprueba, rechaza o revoca, y rechazar/revocar exige motivo. Las notificaciones se envian al solicitante.
 
 El usuario ve sus recompensas en:
 
@@ -592,6 +604,35 @@ Para que un juego se instale tipo Steam:
 
 El cliente incluido es el launcher WinForms/PowerShell beta. El cliente CEF puede construirse despues sobre los mismos endpoints.
 
+### Cliente 1.2
+
+El launcher beta incluido agrega:
+
+- Canje de codigos con `/api/client/redeem/`.
+- Verificacion SHA-256/tamano antes de extraer builds ZIP.
+- Borrado del `.zip` temporal cuando la extraccion termina bien.
+- Auto-update de juegos instalados cuando cambia la build.
+- Auto-update del launcher desde releases configuradas por Superroot en `/client/`.
+- Cloud sync por `file_path`: baja el save antes de abrir el juego y lo sube al cerrar.
+- Ventanas simples para grupos y Family Sharing.
+- Argumentos de lanzamiento `--jevzgames-api`, `--jevzgames-token` y `--jevzgames-game`.
+
+### Family Sharing, grupos y horas
+
+Los usuarios pueden gestionar Family Sharing desde:
+
+```text
+/family/
+```
+
+Los grupos viven en:
+
+```text
+/groups/
+```
+
+La biblioteca del launcher incluye juegos propios y juegos compartidos por familia. La presencia `in_game` acumula `total_play_seconds`, visible en perfiles si la privacidad permite mostrar juegos.
+
 ### Update 1.1
 
 Para actualizar una infraestructura ya montada sin reinstalar, copia los archivos nuevos conservando `app/config/config.php`, `storage/`, `public/uploads/` y `phpmailer/`, y ejecuta:
@@ -608,6 +649,17 @@ Para aplicar controles de visibilidad de juegos en instalaciones existentes, cop
 ```bat
 C:\xampp\php\php.exe update\1.1\update.php
 ```
+
+### Update 1.2
+
+Despues de copiar los archivos nuevos sobre una instalacion 1.1, conserva `app/config/config.php`, `storage/`, `public/uploads/` y `phpmailer/`, y ejecuta:
+
+```bat
+cd C:\xampp\jevzgames-infra
+C:\xampp\php\php.exe update\1.2\update.php
+```
+
+Este update crea tablas nuevas de codigos de juego, Family Sharing, grupos, notificaciones persistentes y releases del launcher; tambien agrega columnas de playtime y cloud sync sin borrar datos.
 
 ## Apache
 

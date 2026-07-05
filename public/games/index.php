@@ -6,6 +6,7 @@ require dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR 
 use App\Core\Page;
 use App\Models\Game;
 use App\Models\GameBuild;
+use App\Models\GameCode;
 use App\Models\PlatformSettings;
 use App\Security\Auth;
 use App\Security\Csrf;
@@ -79,6 +80,7 @@ $games = Game::publicGames($userId, $statusFilter, false, $canViewPrivateGames);
 $links = $userId !== null ? Game::userLinks($userId) : [];
 $builds = GameBuild::latestForGames(array_map(static fn (array $game): int => (int) $game['id'], $games));
 $selectedBuild = $selectedGame ? GameBuild::latestForGame((int) $selectedGame['id']) : null;
+$selectedCanManageCodes = $selectedGame && $userId !== null && GameCode::canManageGameCodes($selectedGame, (int) $userId, Auth::hasRole(['admin', 'superroot']));
 $contentSettings = is_installed() ? PlatformSettings::contentSettings() : [];
 $gamesIntro = trim((string) ($contentSettings['games_intro'] ?? ''));
 if (
@@ -191,6 +193,9 @@ Page::header(t('nav.games'));
                 <?php endif; ?>
                 <?php if (!$selectedBuild): ?>
                     <span class="muted">Sin build instalable.</span>
+                <?php endif; ?>
+                <?php if ($selectedCanManageCodes): ?>
+                    <a class="button button--secondary" href="<?= e(url('/games-code/?game_id=' . (int) $selectedGame['id'])) ?>"><?= e(i18n_text('Codigos del juego', 'Game codes')) ?></a>
                 <?php endif; ?>
                 <a class="button button--secondary" href="<?= e(url('/games/')) ?>">Volver al catalogo</a>
             </div>

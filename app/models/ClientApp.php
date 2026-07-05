@@ -128,17 +128,22 @@ final class ClientApp
     {
         self::ensureEnabled();
         $linkedGames = Game::userLinks($userId);
+        $sharedGames = FamilySharing::sharedGameRows($userId);
         $catalog = Game::publicGames($userId, 'all');
         $gameIds = array_merge(
             array_map(static fn (array $game): int => (int) $game['game_id'], $linkedGames),
+            array_map(static fn (array $game): int => (int) $game['game_id'], $sharedGames),
             array_map(static fn (array $game): int => (int) $game['id'], $catalog)
         );
         $builds = GameBuild::latestForGames($gameIds);
         $generatedAt = date('c');
-        $ownedGames = array_map(
+        $ownedGames = array_merge(array_map(
             static fn (array $game): array => self::ownedGamePayload($userId, $game, $builds[(int) $game['game_id']] ?? null, $generatedAt),
             $linkedGames
-        );
+        ), array_map(
+            static fn (array $game): array => self::ownedGamePayload($userId, ['shared_from_family' => 1, ...$game], $builds[(int) $game['game_id']] ?? null, $generatedAt),
+            $sharedGames
+        ));
 
         return [
             'owned_games' => $ownedGames,
@@ -226,10 +231,14 @@ final class ClientApp
         self::ensureEnabled();
         $status = strtolower(trim($status));
         $status = in_array($status, ['online', 'in_game', 'offline'], true) ? $status : 'online';
+        $currentPresence = Presence::forUser($userId);
         if ($status === 'in_game') {
             $resolvedGameId = $gameSlug !== '' ? (Game::gameIdBySlug($gameSlug) ?? 0) : $gameId;
             if ($resolvedGameId <= 0 || !self::userCanPlayGame($userId, $resolvedGameId)) {
                 throw new RuntimeException('El juego no esta en tu biblioteca.');
+            }
+            if (!empty($currentPresence['game_id']) && (int) $currentPresence['game_id'] !== $resolvedGameId) {
+                Playtime::stop($userId, (int) $currentPresence['game_id']);
             }
         }
 
@@ -238,7 +247,10 @@ final class ClientApp
             : Presence::set($userId, $status, $gameId > 0 ? $gameId : null, 'client');
 
         if (($presence['status'] ?? '') === 'in_game' && !empty($presence['game_id'])) {
+            Playtime::start($userId, (int) $presence['game_id']);
             Game::recordLastPlayed($userId, (int) $presence['game_id']);
+        } elseif (!empty($currentPresence['game_id'])) {
+            Playtime::stop($userId, (int) $currentPresence['game_id']);
         }
 
         return self::presencePayload($presence);
@@ -285,6 +297,90 @@ final class ClientApp
         ];
     }
 
+    public static function cloudConfigs(int $userId, string $gameSlug = '', int $gameId = 0): array
+    {
+        self::ensureEnabled();
+        $game = self::resolvePlayableGame($userId, $gameSlug, $gameId);
+
+        return [
+            'game' => self::clientGameSummary($game),
+            'configs' => CloudSave::configsForGame((int) $game['id']),
+            'legacy_mode' => 'api_slot',
+            'steam_like_mode' => 'file_path',
+        ];
+    }
+
+    public static function cloudPush(int $userId, array $input): array
+    {
+        self::ensureEnabled();
+        $game = self::resolvePlayableGame($userId, (string) ($input['game_slug'] ?? ''), (int) ($input['game_id'] ?? 0));
+        $configKey = (string) ($input['config_key'] ?? 'default');
+        $slot = max(1, (int) ($input['slot'] ?? 1));
+        $save = $input['save'] ?? null;
+        if (!is_array($save)) {
+            $save = [
+                'content_base64' => (string) ($input['content_base64'] ?? ''),
+                'local_path' => (string) ($input['local_path'] ?? ''),
+                'mtime_utc' => (string) ($input['mtime_utc'] ?? ''),
+            ];
+        }
+        $metadata = isset($input['metadata']) && is_array($input['metadata']) ? $input['metadata'] : [];
+
+        return [
+            'game' => self::clientGameSummary($game),
+            'cloud_save' => CloudSave::saveForUser((int) $game['id'], $userId, $configKey, $slot, $save, $metadata),
+        ];
+    }
+
+    public static function cloudPull(int $userId, array $input): array
+    {
+        self::ensureEnabled();
+        $game = self::resolvePlayableGame($userId, (string) ($input['game_slug'] ?? ''), (int) ($input['game_id'] ?? 0));
+        $configKey = (string) ($input['config_key'] ?? 'default');
+        $slot = max(1, (int) ($input['slot'] ?? 1));
+
+        return [
+            'game' => self::clientGameSummary($game),
+            'cloud_save' => CloudSave::loadForUser((int) $game['id'], $userId, $configKey, $slot),
+        ];
+    }
+
+    public static function groups(int $userId): array
+    {
+        self::ensureEnabled();
+
+        return [
+            'my_groups' => GameGroup::listForUser($userId),
+            'public_groups' => GameGroup::publicGroups(),
+        ];
+    }
+
+    public static function family(int $userId): array
+    {
+        self::ensureEnabled();
+
+        return [
+            'family' => FamilySharing::rowsForUser($userId),
+        ];
+    }
+
+    public static function launcherUpdate(string $currentVersion, string $os = 'windows'): array
+    {
+        self::ensureEnabled();
+        $latest = LauncherRepository::latest($os);
+        if ($latest === null) {
+            return [
+                'update_available' => false,
+                'latest' => null,
+            ];
+        }
+
+        return [
+            'update_available' => self::versionIsNewer((string) $latest['version'], $currentVersion),
+            'latest' => $latest,
+        ];
+    }
+
     public static function revoke(string $token): void
     {
         self::ensureTables();
@@ -298,6 +394,10 @@ final class ClientApp
         $userId = $stmt->fetchColumn();
         if ($userId !== false) {
             try {
+                $presence = Presence::forUser((int) $userId);
+                if (!empty($presence['game_id'])) {
+                    Playtime::stop((int) $userId, (int) $presence['game_id']);
+                }
                 Presence::offline((int) $userId);
             } catch (\Throwable) {
             }
@@ -373,7 +473,14 @@ final class ClientApp
             'offline_available' => $offlineAvailable,
             'offline_entitlement' => self::offlineEntitlement($userId, $game, $offlineAllowed, $offlineAvailable, $generatedAt),
             'last_played_at' => $game['last_played_at'] ?? null,
+            'total_play_seconds' => (int) ($game['total_play_seconds'] ?? 0),
+            'total_play_hours' => round(((int) ($game['total_play_seconds'] ?? 0)) / 3600, 2),
             'linked_at' => $game['linked_at'] ?? null,
+            'shared_from_family' => !empty($game['shared_from_family']),
+            'family_owner' => !empty($game['family_owner_user_id']) ? [
+                'id' => (int) $game['family_owner_user_id'],
+                'username' => (string) ($game['family_owner_username'] ?? ''),
+            ] : null,
         ];
     }
 
@@ -513,7 +620,7 @@ final class ClientApp
         $stmt = Database::pdo()->prepare(
             'SELECT COUNT(*)
              FROM games g
-             LEFT JOIN user_games ug ON ug.game_id = g.id AND ug.user_id = :linked_user_id
+             LEFT JOIN user_games ug ON ug.game_id = g.id AND ug.user_id = :linked_user_id AND ug.playtime_only = 0
              LEFT JOIN user_game_licenses ugl ON ugl.game_id = g.id AND ugl.user_id = :licensed_user_id AND ugl.status = "active"
              WHERE g.id = :game_id
                AND g.status IN ("development", "playtest", "beta", "published")
@@ -525,7 +632,7 @@ final class ClientApp
             'game_id' => $gameId,
         ]);
 
-        return (int) $stmt->fetchColumn() > 0;
+        return (int) $stmt->fetchColumn() > 0 || FamilySharing::canUseSharedGame($userId, $gameId);
     }
 
     private static function resolvePlayableGame(int $userId, string $gameSlug = '', int $gameId = 0): array
@@ -601,6 +708,14 @@ final class ClientApp
         }
 
         return filter_var($path, FILTER_VALIDATE_URL) ? $path : \url($path);
+    }
+
+    private static function versionIsNewer(string $latest, string $current): bool
+    {
+        $latestClean = preg_replace('/[^0-9.].*$/', '', $latest) ?: $latest;
+        $currentClean = preg_replace('/[^0-9.].*$/', '', $current) ?: $current;
+
+        return version_compare($latestClean, $currentClean, '>');
     }
 
     private static function hashToken(string $token): string

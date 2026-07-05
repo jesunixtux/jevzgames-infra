@@ -1,4 +1,4 @@
-# RacLauncher Beta 0.1.9
+# RacLauncher Beta 0.1.10
 
 ## Cambios principales
 
@@ -15,6 +15,12 @@
 - Agrega ventana de Mensajes con polling cada 10 segundos.
 - Agrega ventana de Logros por juego usando `/api/client/achievements/list/`.
 - Permite probar desbloqueos con `/api/client/achievements/unlock/`; la lista visible no expone codigos internos.
+- Canjea codigos de juego u objeto con `/api/client/redeem/`.
+- Verifica `checksum` SHA-256 y tamano antes de extraer un ZIP.
+- Borra el `.zip` temporal despues de una extraccion correcta.
+- Sincroniza cloud saves configurados como `file_path`: pull antes de abrir el juego y push al cerrarlo.
+- Muestra grupos y Family Sharing desde los endpoints del cliente.
+- Revisa `/api/client/launcher/update-check/` y puede aplicar un ZIP de update del launcher publicado por Superroot.
 
 ## Como probar
 
@@ -29,6 +35,8 @@
 9. En unos segundos debe volver a Cerrado/online.
 10. Abre `Mensajes` para probar conversaciones privadas.
 11. Selecciona un juego, abre `Logros` y verifica progreso/desbloqueados.
+12. Prueba `Canjear` con un codigo de `/games-code/` o un codigo de inventario.
+13. Configura un cloud save `file_path` en Admin y verifica que el launcher haga pull/push al abrir/cerrar.
 
 ## Modo offline
 
@@ -53,4 +61,15 @@ https://racacount.jevzgames.com
 %AppData%\RacLauncher\session.json
 %AppData%\RacLauncher\library-cache.json
 %AppData%\RacLauncher\games\<slug>\installed.json
+%AppData%\RacLauncher\updates\
 ```
+
+## Updates del launcher
+
+Superroot publica releases desde `/client/`. El launcher consulta:
+
+```text
+POST /api/client/launcher/update-check/
+```
+
+Si hay una version mayor, descarga el ZIP, verifica `checksum_sha256` si existe, extrae en `%AppData%\RacLauncher\updates\` y ejecuta `Apply-RacLauncherUpdate.cmd` para reemplazar archivos al cerrar.

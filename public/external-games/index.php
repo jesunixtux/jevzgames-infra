@@ -21,6 +21,7 @@ $settings = ExternalGames::settings();
 $stats = ExternalGames::stats();
 $externalGames = [];
 $editingGame = null;
+$editingMainGame = null;
 $gameBuilds = [];
 $players = [];
 
@@ -91,6 +92,7 @@ if ($settings['enabled'] && $settings['allow_publish'] && $settings['configured'
             $editingGame = ExternalGames::findGame($editGameId, $userId, $canManageAll);
             if ($editingGame !== null) {
                 $managed = ExternalGames::managedMainGame($editGameId, $userId, $canManageAll);
+                $editingMainGame = $managed['main_game'];
                 $gameBuilds = GameBuild::list((int) $managed['main_game']['id']);
                 $players = ExternalGames::playerRows($editGameId, $userId, $canManageAll);
             }
@@ -194,6 +196,9 @@ Page::header(i18n_text('Juegos externos', 'External games'));
                 <button type="submit"><?= e($editingGame ? i18n_text('Guardar cambios', 'Save changes') : i18n_text('Crear juego', 'Create game')) ?></button>
                 <?php if ($editingGame): ?>
                     <a class="button button--secondary" href="<?= e(url('/external-games/')) ?>"><?= e(i18n_text('Nuevo juego', 'New game')) ?></a>
+                    <?php if ($editingMainGame): ?>
+                        <a class="button button--secondary" href="<?= e(url('/games-code/?game_id=' . (int) $editingMainGame['id'])) ?>"><?= e(i18n_text('Codigos', 'Codes')) ?></a>
+                    <?php endif; ?>
                     <?php if (!empty($editingGame['slug'])): ?>
                         <a class="button button--secondary" href="<?= e(url('/games/?game=' . rawurlencode((string) $editingGame['slug']))) ?>"><?= e(i18n_text('Ver juego', 'View game')) ?></a>
                     <?php endif; ?>
@@ -409,6 +414,9 @@ Page::header(i18n_text('Juegos externos', 'External games'));
                             <td><?= e($externalGame['player_count'] ?? 0) ?></td>
                             <td>
                                 <a class="button button--secondary" href="<?= e(url('/external-games/?edit_game=' . (int) $externalGame['id'])) ?>"><?= e(i18n_text('Editar', 'Edit')) ?></a>
+                                <?php if (!empty($externalGame['main_game_id'])): ?>
+                                    <a class="button button--secondary" href="<?= e(url('/games-code/?game_id=' . (int) $externalGame['main_game_id'])) ?>"><?= e(i18n_text('Codigos', 'Codes')) ?></a>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>

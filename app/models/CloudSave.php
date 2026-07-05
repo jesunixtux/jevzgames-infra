@@ -32,6 +32,9 @@ final class CloudSave
                 CONSTRAINT fk_game_cloud_save_configs_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
+        self::addColumnIfMissing('game_cloud_save_configs', 'sync_mode', 'ENUM("api_slot", "file_path") NOT NULL DEFAULT "api_slot" AFTER auto_sync');
+        self::addColumnIfMissing('game_cloud_save_configs', 'local_path_hint', 'VARCHAR(500) NULL AFTER sync_mode');
+        self::addColumnIfMissing('game_cloud_save_configs', 'conflict_policy', 'ENUM("newest", "manual", "server_wins", "client_wins") NOT NULL DEFAULT "newest" AFTER local_path_hint');
 
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS user_cloud_saves (
@@ -116,6 +119,9 @@ final class CloudSave
                      max_slots = :max_slots,
                      max_bytes = :max_bytes,
                      auto_sync = :auto_sync,
+                     sync_mode = :sync_mode,
+                     local_path_hint = :local_path_hint,
+                     conflict_policy = :conflict_policy,
                      status = :status,
                      metadata_json = :metadata_json,
                      updated_at = NOW()
@@ -137,9 +143,9 @@ final class CloudSave
         unset($insertData['id']);
         $stmt = $pdo->prepare(
             'INSERT INTO game_cloud_save_configs
-                (game_id, config_key, name, max_slots, max_bytes, auto_sync, status, metadata_json, created_at, updated_at)
+                (game_id, config_key, name, max_slots, max_bytes, auto_sync, sync_mode, local_path_hint, conflict_policy, status, metadata_json, created_at, updated_at)
              VALUES
-                (:game_id, :config_key, :name, :max_slots, :max_bytes, :auto_sync, :status, :metadata_json, NOW(), NOW())'
+                (:game_id, :config_key, :name, :max_slots, :max_bytes, :auto_sync, :sync_mode, :local_path_hint, :conflict_policy, :status, :metadata_json, NOW(), NOW())'
         );
         try {
             $stmt->execute($insertData);
@@ -295,6 +301,9 @@ final class CloudSave
         $maxSlots = (int) ($input['max_slots'] ?? 3);
         $maxBytes = (int) ($input['max_bytes'] ?? 65536);
         $autoSync = isset($input['auto_sync']) ? 1 : 0;
+        $syncMode = (string) ($input['sync_mode'] ?? 'api_slot');
+        $localPathHint = trim((string) ($input['local_path_hint'] ?? ''));
+        $conflictPolicy = (string) ($input['conflict_policy'] ?? 'newest');
         $status = (string) ($input['status'] ?? 'active');
         $metadataJson = self::cleanJson((string) ($input['metadata_json'] ?? ''));
 
@@ -317,6 +326,15 @@ final class CloudSave
         if (!in_array($status, self::STATUSES, true)) {
             throw new RuntimeException('Estado cloud invalido.');
         }
+        if (!in_array($syncMode, ['api_slot', 'file_path'], true)) {
+            throw new RuntimeException('Modo cloud invalido.');
+        }
+        if ($localPathHint !== '' && strlen($localPathHint) > 500) {
+            throw new RuntimeException('La ruta local cloud es demasiado larga.');
+        }
+        if (!in_array($conflictPolicy, ['newest', 'manual', 'server_wins', 'client_wins'], true)) {
+            throw new RuntimeException('Politica de conflicto cloud invalida.');
+        }
 
         return [
             'id' => $id,
@@ -326,6 +344,9 @@ final class CloudSave
             'max_slots' => $maxSlots,
             'max_bytes' => $maxBytes,
             'auto_sync' => $autoSync,
+            'sync_mode' => $syncMode,
+            'local_path_hint' => $localPathHint !== '' ? $localPathHint : null,
+            'conflict_policy' => $conflictPolicy,
             'status' => $status,
             'metadata_json' => $metadataJson,
         ];
@@ -356,6 +377,9 @@ final class CloudSave
             'max_slots' => (int) $row['max_slots'],
             'max_bytes' => (int) $row['max_bytes'],
             'auto_sync' => (bool) $row['auto_sync'],
+            'sync_mode' => (string) ($row['sync_mode'] ?? 'api_slot'),
+            'local_path_hint' => $row['local_path_hint'] ?? null,
+            'conflict_policy' => (string) ($row['conflict_policy'] ?? 'newest'),
             'metadata' => Game::decodeJson($row['metadata_json'] ?? null),
         ];
     }
@@ -413,5 +437,23 @@ final class CloudSave
         $stmt->execute(['id' => $gameId]);
 
         return (int) $stmt->fetchColumn() > 0;
+    }
+
+    private static function addColumnIfMissing(string $table, string $column, string $definition): void
+    {
+        $stmt = Database::pdo()->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = :table_name
+               AND column_name = :column_name'
+        );
+        $stmt->execute([
+            'table_name' => $table,
+            'column_name' => $column,
+        ]);
+        if ((int) $stmt->fetchColumn() === 0) {
+            Database::pdo()->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition);
+        }
     }
 }

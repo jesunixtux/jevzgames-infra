@@ -75,9 +75,10 @@ final class Game
         $linkedJoin = '';
         if ($userId !== null) {
             self::ensureLicenseTables();
+            self::ensureUserGameMetadataColumns();
             $linkedSelect = 'CASE WHEN ug.user_id IS NULL THEN 0 ELSE 1 END AS is_linked,
                              CASE WHEN ugl.id IS NULL THEN 0 ELSE 1 END AS has_license';
-            $linkedJoin = 'LEFT JOIN user_games ug ON ug.game_id = g.id AND ug.user_id = :linked_user_id
+            $linkedJoin = 'LEFT JOIN user_games ug ON ug.game_id = g.id AND ug.user_id = :linked_user_id AND ug.playtime_only = 0
                            LEFT JOIN user_game_licenses ugl ON ugl.game_id = g.id AND ugl.user_id = :licensed_user_id AND ugl.status = "active"';
             $params['linked_user_id'] = $userId;
             $params['licensed_user_id'] = $userId;
@@ -118,9 +119,10 @@ final class Game
         $linkedJoin = '';
         if ($userId !== null) {
             self::ensureLicenseTables();
+            self::ensureUserGameMetadataColumns();
             $linkedSelect = 'CASE WHEN ug.user_id IS NULL THEN 0 ELSE 1 END AS is_linked,
                              CASE WHEN ugl.id IS NULL THEN 0 ELSE 1 END AS has_license';
-            $linkedJoin = 'LEFT JOIN user_games ug ON ug.game_id = g.id AND ug.user_id = :linked_user_id
+            $linkedJoin = 'LEFT JOIN user_games ug ON ug.game_id = g.id AND ug.user_id = :linked_user_id AND ug.playtime_only = 0
                            LEFT JOIN user_game_licenses ugl ON ugl.game_id = g.id AND ugl.user_id = :licensed_user_id AND ugl.status = "active"';
             $params['linked_user_id'] = $userId;
             $params['licensed_user_id'] = $userId;
@@ -184,6 +186,7 @@ final class Game
     public static function ensureUserGameMetadataColumns(): void
     {
         self::addColumnIfMissing('user_games', 'last_played_at', 'DATETIME NULL AFTER linked_at');
+        self::addColumnIfMissing('user_games', 'playtime_only', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER last_played_at');
     }
 
     public static function grantLicense(int $userId, int $gameId, string $source = 'manual'): array
@@ -274,6 +277,7 @@ final class Game
              INNER JOIN games g ON g.id = ug.game_id
              LEFT JOIN user_game_licenses l ON l.user_id = ug.user_id AND l.game_id = ug.game_id AND l.status = "active"
              WHERE ug.user_id = :user_id
+               AND ug.playtime_only = 0
              ORDER BY ug.linked_at DESC'
         );
         $stmt->execute(['user_id' => $userId]);
@@ -376,9 +380,9 @@ final class Game
     {
         self::ensureUserGameMetadataColumns();
         $stmt = Database::pdo()->prepare(
-            'INSERT INTO user_games (user_id, game_id, linked_at)
-             VALUES (:user_id, :game_id, NOW())
-             ON DUPLICATE KEY UPDATE linked_at = linked_at'
+            'INSERT INTO user_games (user_id, game_id, linked_at, playtime_only)
+             VALUES (:user_id, :game_id, NOW(), 0)
+             ON DUPLICATE KEY UPDATE playtime_only = 0'
         );
         $stmt->execute([
             'user_id' => $userId,
