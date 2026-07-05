@@ -1,4 +1,4 @@
-﻿# RacLauncher Beta 0.1.9 - JEVZGames / RacAccount
+﻿# RacLauncher Beta 0.1.11 - JEVZGames / RacAccount
 # Cambios:
 # - Flujo tipo Steam: si no hay sesion, muestra solo login.
 # - Si hay sesion guardada, entra directo a biblioteca.
@@ -18,13 +18,14 @@ $ErrorActionPreference = "Stop"
 
 $AppName = "RacLauncher"
 $BaseUrl = "https://racacount.jevzgames.com"
-$AppVersion = "0.1.10-beta"
+$AppVersion = "0.1.11-beta"
 
 $AppData = Join-Path $env:APPDATA $AppName
 $GamesDir = Join-Path $AppData "games"
 $DownloadsDir = Join-Path $AppData "downloads"
 $UpdatesDir = Join-Path $AppData "updates"
 $SessionFile = Join-Path $AppData "session.json"
+$AccountsFile = Join-Path $AppData "accounts.json"
 $LibraryCacheFile = Join-Path $AppData "library-cache.json"
 $ConfigFile = Join-Path $AppData "config.json"
 $LauncherDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
@@ -46,6 +47,58 @@ function Load-Session {
     return $null
 }
 
+function Load-Accounts {
+    if (Test-Path $AccountsFile) {
+        try {
+            $data = Get-Content $AccountsFile -Raw | ConvertFrom-Json
+            if ($data -and $data.accounts) { return @($data.accounts) }
+        } catch {}
+    }
+    return @()
+}
+
+function Save-Accounts($accounts) {
+    try {
+        @{
+            accounts = @($accounts)
+            saved_at = (Get-Date).ToString("s")
+        } | ConvertTo-Json -Depth 10 | Set-Content -Path $AccountsFile -Encoding UTF8
+    } catch {
+        Log "No se pudo guardar accounts.json: $($_.Exception.Message)"
+    }
+}
+
+function Get-AccountKey($accountOrUser) {
+    if (-not $accountOrUser) { return "" }
+    $user = if ($accountOrUser.user) { $accountOrUser.user } else { $accountOrUser }
+    if ($user.id) { return "id:$($user.id)" }
+    if ($user.username) { return "username:$([string]$user.username)" }
+    if ($user.email) { return "email:$([string]$user.email)" }
+    return ""
+}
+
+function Remember-Account($token, $user) {
+    if ([string]::IsNullOrWhiteSpace([string]$token)) { return }
+
+    $key = Get-AccountKey $user
+    $accounts = @()
+    foreach ($account in (Load-Accounts)) {
+        $accountKey = Get-AccountKey $account
+        $sameUser = (-not [string]::IsNullOrWhiteSpace($key)) -and $accountKey -eq $key
+        $sameToken = $account.client_token -and ([string]$account.client_token) -eq ([string]$token)
+        if ($sameUser -or $sameToken) { continue }
+        $accounts += $account
+    }
+
+    $accounts += [pscustomobject]@{
+        client_token = [string]$token
+        token_type = "Bearer"
+        user = $user
+        saved_at = (Get-Date).ToString("s")
+    }
+    Save-Accounts $accounts
+}
+
 function Save-Session($token, $user) {
     @{
         client_token = $token
@@ -53,6 +106,7 @@ function Save-Session($token, $user) {
         user = $user
         saved_at = (Get-Date).ToString("s")
     } | ConvertTo-Json -Depth 6 | Set-Content -Path $SessionFile -Encoding UTF8
+    Remember-Account $token $user
 }
 
 function Clear-Session {
@@ -170,7 +224,7 @@ function Set-Status($text) {
 function Set-Busy($busy) {
     $script:IsBusy = $busy
 
-    foreach ($btn in @($script:LogoutBtn, $script:RefreshBtn, $script:InstallBtn, $script:PlayBtn, $script:OpenFolderBtn, $script:MessagesBtn, $script:AchievementsBtn, $script:RedeemBtn, $script:GroupsBtn, $script:FamilyBtn, $script:CloudSyncBtn)) {
+    foreach ($btn in @($script:LogoutBtn, $script:SwitchAccountBtn, $script:RefreshBtn, $script:InstallBtn, $script:PlayBtn, $script:OpenFolderBtn, $script:MessagesBtn, $script:AchievementsBtn, $script:RedeemBtn, $script:GroupsBtn, $script:FamilyBtn, $script:CloudSyncBtn)) {
         if ($btn) { $btn.Enabled = -not $busy }
     }
 
@@ -406,6 +460,31 @@ function Resolve-CloudPath($hint, $slug) {
     return $path
 }
 
+function Parse-CloudDateUtc($value) {
+    if ($null -eq $value -or [string]::IsNullOrWhiteSpace([string]$value)) { return $null }
+    try { return ([datetime]::Parse([string]$value)).ToUniversalTime() } catch { return $null }
+}
+
+function Should-ApplyCloudPull($localPath, $cloudSave, $conflictPolicy) {
+    if (-not (Test-Path $localPath)) { return $true }
+
+    $policy = if ($conflictPolicy) { ([string]$conflictPolicy).ToLowerInvariant() } else { "newest" }
+    if ($policy -eq "client_wins" -or $policy -eq "manual") { return $false }
+    if ($policy -eq "server_wins") { return $true }
+
+    $remoteAt = Parse-CloudDateUtc $cloudSave.updated_at
+    if (-not $remoteAt -and $cloudSave.save -and $cloudSave.save.mtime_utc) {
+        $remoteAt = Parse-CloudDateUtc $cloudSave.save.mtime_utc
+    }
+    if (-not $remoteAt -and $cloudSave.metadata -and $cloudSave.metadata.local_mtime_utc) {
+        $remoteAt = Parse-CloudDateUtc $cloudSave.metadata.local_mtime_utc
+    }
+    if (-not $remoteAt) { return $true }
+
+    $localAt = (Get-Item $localPath).LastWriteTimeUtc
+    return $remoteAt -ge $localAt
+}
+
 
 function Send-PresenceOnline {
     if ($script:OfflineMode) { return }
@@ -427,7 +506,7 @@ function Send-PresenceInGame($slug) {
     }
 }
 
-function Sync-CloudForGame($game, $direction) {
+function Sync-CloudForGame($game, $direction, [bool]$automatic = $true) {
     if ($script:OfflineMode -or -not $game) { return }
     $token = Get-Token
     if (-not $token) { return }
@@ -441,16 +520,30 @@ function Sync-CloudForGame($game, $direction) {
 
         foreach ($cfg in $res.data.configs) {
             $mode = if ($cfg.sync_mode) { ([string]$cfg.sync_mode).ToLowerInvariant() } else { "api_slot" }
-            if ($mode -ne "file_path") { continue }
+            $configKey = if ($cfg.config_key) { [string]$cfg.config_key } else { "default" }
+            $autoSync = $true
+            if ($null -ne $cfg.auto_sync) { $autoSync = To-Bool $cfg.auto_sync }
+
+            if ($automatic -and -not $autoSync) {
+                Log "Cloud auto desactivado para $slug/$configKey"
+                continue
+            }
+
+            if ($mode -ne "file_path") {
+                Log "Cloud $slug/$configKey usa modo $mode; lo sincroniza el juego por API."
+                continue
+            }
 
             $localPath = Resolve-CloudPath $cfg.local_path_hint $slug
             if ([string]::IsNullOrWhiteSpace($localPath)) { continue }
 
-            $configKey = if ($cfg.config_key) { [string]$cfg.config_key } else { "default" }
-
             if ($direction -eq "pull") {
                 $pull = Api-Post "/api/client/cloud/pull/" @{ game_slug = $slug; config_key = $configKey; slot = 1 } $token
                 if ($pull.success -and $pull.data.cloud_save -and $pull.data.cloud_save.found -and $pull.data.cloud_save.save -and $pull.data.cloud_save.save.content_base64) {
+                    if ($automatic -and -not (Should-ApplyCloudPull $localPath $pull.data.cloud_save $cfg.conflict_policy)) {
+                        Log "Cloud pull omitido por politica $($cfg.conflict_policy): $slug/$configKey"
+                        continue
+                    }
                     $bytes = [Convert]::FromBase64String([string]$pull.data.cloud_save.save.content_base64)
                     $dir = Split-Path $localPath -Parent
                     if (-not [string]::IsNullOrWhiteSpace($dir)) {
@@ -1009,6 +1102,143 @@ function Do-Logout {
     Show-Login
 }
 
+function Reset-ClientStateForAccountChange {
+    Clear-LibraryCache
+    if ($script:GamesList) { $script:GamesList.Items.Clear() }
+    $script:Games = @()
+    if ($script:AchievementsForm -and -not $script:AchievementsForm.IsDisposed) { $script:AchievementsForm.Close() }
+    $script:Achievements = @()
+    $script:AchievementsCurrentGame = $null
+}
+
+function Format-SavedAccountLabel($account) {
+    $name = Get-UserDisplayName $account.user
+    if ([string]::IsNullOrWhiteSpace($name)) { $name = "Cuenta guardada" }
+    $savedAt = if ($account.saved_at) { [string]$account.saved_at } else { "" }
+    if ([string]::IsNullOrWhiteSpace($savedAt)) { return $name }
+    return "$name  |  $savedAt"
+}
+
+function Open-AccountSwitcher {
+    if ($script:IsBusy) { return }
+    if ($script:RunningGames -and $script:RunningGames.Count -gt 0) {
+        [System.Windows.Forms.MessageBox]::Show("Cierra los juegos abiertos antes de cambiar de cuenta.", "Cambiar cuenta", "OK", "Information") | Out-Null
+        return
+    }
+
+    $script:AccountSwitcherAccounts = @(Load-Accounts)
+
+    $dialog = New-Object System.Windows.Forms.Form
+    $dialog.Text = "Cambiar cuenta"
+    $dialog.Size = New-Object System.Drawing.Size(480, 330)
+    $dialog.StartPosition = "CenterParent"
+    $dialog.BackColor = [System.Drawing.Color]::FromArgb(30,30,36)
+    $dialog.FormBorderStyle = "FixedDialog"
+    $dialog.MaximizeBox = $false
+    $dialog.MinimizeBox = $false
+
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = "Cuentas guardadas"
+    $label.ForeColor = [System.Drawing.Color]::White
+    $label.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $label.Location = New-Object System.Drawing.Point(18, 16)
+    $label.Size = New-Object System.Drawing.Size(430, 24)
+    $dialog.Controls.Add($label)
+
+    $list = New-Object System.Windows.Forms.ListBox
+    $list.Location = New-Object System.Drawing.Point(18, 50)
+    $list.Size = New-Object System.Drawing.Size(430, 150)
+    $list.BackColor = [System.Drawing.Color]::FromArgb(42,42,50)
+    $list.ForeColor = [System.Drawing.Color]::White
+    foreach ($account in $script:AccountSwitcherAccounts) {
+        $list.Items.Add((Format-SavedAccountLabel $account)) | Out-Null
+    }
+    $dialog.Controls.Add($list)
+
+    $useBtn = New-Object System.Windows.Forms.Button
+    $useBtn.Text = "Usar"
+    $useBtn.Location = New-Object System.Drawing.Point(18, 220)
+    $useBtn.Size = New-Object System.Drawing.Size(90, 32)
+    $useBtn.Add_Click({
+        if ($list.SelectedIndex -lt 0 -or $list.SelectedIndex -ge $script:AccountSwitcherAccounts.Count) {
+            [System.Windows.Forms.MessageBox]::Show("Selecciona una cuenta.", "Cambiar cuenta", "OK", "Information") | Out-Null
+            return
+        }
+
+        $account = $script:AccountSwitcherAccounts[$list.SelectedIndex]
+        if (-not $account.client_token) {
+            [System.Windows.Forms.MessageBox]::Show("La cuenta guardada no tiene token de cliente.", "Cambiar cuenta", "OK", "Warning") | Out-Null
+            return
+        }
+
+        Reset-ClientStateForAccountChange
+        Save-Session ([string]$account.client_token) $account.user
+        $dialog.Close()
+        Set-Status "Cuenta cambiada."
+        Show-Library
+    })
+    $dialog.Controls.Add($useBtn)
+
+    $addBtn = New-Object System.Windows.Forms.Button
+    $addBtn.Text = "Agregar otra"
+    $addBtn.Location = New-Object System.Drawing.Point(118, 220)
+    $addBtn.Size = New-Object System.Drawing.Size(110, 32)
+    $addBtn.Add_Click({
+        Clear-Session
+        Reset-ClientStateForAccountChange
+        $dialog.Close()
+        $script:UserBox.Text = ""
+        $script:PassBox.Text = ""
+        Set-Status "Inicia sesion con otra cuenta."
+        Show-Login
+    })
+    $dialog.Controls.Add($addBtn)
+
+    $removeBtn = New-Object System.Windows.Forms.Button
+    $removeBtn.Text = "Borrar"
+    $removeBtn.Location = New-Object System.Drawing.Point(238, 220)
+    $removeBtn.Size = New-Object System.Drawing.Size(90, 32)
+    $removeBtn.Add_Click({
+        if ($list.SelectedIndex -lt 0 -or $list.SelectedIndex -ge $script:AccountSwitcherAccounts.Count) {
+            [System.Windows.Forms.MessageBox]::Show("Selecciona una cuenta.", "Cambiar cuenta", "OK", "Information") | Out-Null
+            return
+        }
+
+        $removed = $script:AccountSwitcherAccounts[$list.SelectedIndex]
+        $remaining = @()
+        for ($i = 0; $i -lt $script:AccountSwitcherAccounts.Count; $i++) {
+            if ($i -ne $list.SelectedIndex) { $remaining += $script:AccountSwitcherAccounts[$i] }
+        }
+        Save-Accounts $remaining
+
+        $session = Load-Session
+        if ($session -and $session.client_token -and $removed.client_token -and ([string]$session.client_token) -eq ([string]$removed.client_token)) {
+            Clear-Session
+            Reset-ClientStateForAccountChange
+            $dialog.Close()
+            Set-Status "Cuenta guardada eliminada."
+            Show-Login
+            return
+        }
+
+        $script:AccountSwitcherAccounts = @(Load-Accounts)
+        $list.Items.Clear()
+        foreach ($account in $script:AccountSwitcherAccounts) {
+            $list.Items.Add((Format-SavedAccountLabel $account)) | Out-Null
+        }
+    })
+    $dialog.Controls.Add($removeBtn)
+
+    $closeBtn = New-Object System.Windows.Forms.Button
+    $closeBtn.Text = "Cerrar"
+    $closeBtn.Location = New-Object System.Drawing.Point(358, 220)
+    $closeBtn.Size = New-Object System.Drawing.Size(90, 32)
+    $closeBtn.Add_Click({ $dialog.Close() })
+    $dialog.Controls.Add($closeBtn)
+
+    [void]$dialog.ShowDialog($form)
+}
+
 function Do-Install {
     $game = Selected-Game
     if ($game) { Download-And-Install $game }
@@ -1558,10 +1788,10 @@ function Sync-SelectedGameCloud {
     )
 
     if ($result -eq "Yes") {
-        Sync-CloudForGame $game "push"
+        Sync-CloudForGame $game "push" $false
         [System.Windows.Forms.MessageBox]::Show("Sincronizacion de subida ejecutada. Revisa el log para detalles.", "Cloud sync", "OK", "Information") | Out-Null
     } elseif ($result -eq "No") {
-        Sync-CloudForGame $game "pull"
+        Sync-CloudForGame $game "pull" $false
         [System.Windows.Forms.MessageBox]::Show("Sincronizacion de bajada ejecutada. Revisa el log para detalles.", "Cloud sync", "OK", "Information") | Out-Null
     }
 }
@@ -1649,7 +1879,7 @@ Save-Config
 
 # UI
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "RacLauncher Beta 0.1.10"
+$form.Text = "RacLauncher Beta 0.1.11"
 $form.Size = New-Object System.Drawing.Size(960, 620)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 24)
@@ -1762,27 +1992,34 @@ $script:LoggedLabel = New-Object System.Windows.Forms.Label
 $script:LoggedLabel.Text = "Cuenta:"
 $script:LoggedLabel.ForeColor = [System.Drawing.Color]::LightGray
 $script:LoggedLabel.Location = New-Object System.Drawing.Point(290, 25)
-$script:LoggedLabel.Size = New-Object System.Drawing.Size(270, 24)
+$script:LoggedLabel.Size = New-Object System.Drawing.Size(250, 24)
 $topBar.Controls.Add($script:LoggedLabel)
 
 $script:RefreshBtn = New-Object System.Windows.Forms.Button
 $script:RefreshBtn.Text = "Refrescar"
-$script:RefreshBtn.Location = New-Object System.Drawing.Point(575, 20)
-$script:RefreshBtn.Size = New-Object System.Drawing.Size(95, 32)
+$script:RefreshBtn.Location = New-Object System.Drawing.Point(548, 20)
+$script:RefreshBtn.Size = New-Object System.Drawing.Size(82, 32)
 $script:RefreshBtn.Add_Click({ Refresh-Library })
 $topBar.Controls.Add($script:RefreshBtn)
 
+$script:SwitchAccountBtn = New-Object System.Windows.Forms.Button
+$script:SwitchAccountBtn.Text = "Cambiar"
+$script:SwitchAccountBtn.Location = New-Object System.Drawing.Point(638, 20)
+$script:SwitchAccountBtn.Size = New-Object System.Drawing.Size(82, 32)
+$script:SwitchAccountBtn.Add_Click({ Open-AccountSwitcher })
+$topBar.Controls.Add($script:SwitchAccountBtn)
+
 $script:OpenFolderBtn = New-Object System.Windows.Forms.Button
 $script:OpenFolderBtn.Text = "Carpeta"
-$script:OpenFolderBtn.Location = New-Object System.Drawing.Point(680, 20)
-$script:OpenFolderBtn.Size = New-Object System.Drawing.Size(95, 32)
+$script:OpenFolderBtn.Location = New-Object System.Drawing.Point(728, 20)
+$script:OpenFolderBtn.Size = New-Object System.Drawing.Size(78, 32)
 $script:OpenFolderBtn.Add_Click({ Open-AppData })
 $topBar.Controls.Add($script:OpenFolderBtn)
 
 $script:LogoutBtn = New-Object System.Windows.Forms.Button
-$script:LogoutBtn.Text = "Logout / Cerrar sesion"
-$script:LogoutBtn.Location = New-Object System.Drawing.Point(785, 20)
-$script:LogoutBtn.Size = New-Object System.Drawing.Size(150, 32)
+$script:LogoutBtn.Text = "Salir"
+$script:LogoutBtn.Location = New-Object System.Drawing.Point(814, 20)
+$script:LogoutBtn.Size = New-Object System.Drawing.Size(78, 32)
 $script:LogoutBtn.Add_Click({ Do-Logout })
 $topBar.Controls.Add($script:LogoutBtn)
 
@@ -1921,6 +2158,7 @@ $script:CurrentChatUserId = $null
 $script:Achievements = @()
 $script:AchievementsCurrentGame = $null
 $script:AchievementsForm = $null
+$script:AccountSwitcherAccounts = @()
 $script:LauncherUpdateChecked = $false
 
 $script:GameStateTimer = New-Object System.Windows.Forms.Timer

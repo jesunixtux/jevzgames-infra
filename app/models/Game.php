@@ -174,9 +174,38 @@ final class Game
 
         if ($purgeGameData) {
             self::purgeUserGameData($userId, $gameId);
+        } else {
+            self::deleteUserGameLicense($userId, $gameId);
+            self::deleteUserGameOauthTokens($userId, $gameId);
         }
 
         $stmt = Database::pdo()->prepare('DELETE FROM user_games WHERE user_id = :user_id AND game_id = :game_id');
+        $stmt->execute([
+            'user_id' => $userId,
+            'game_id' => $gameId,
+        ]);
+    }
+
+    public static function deleteUserGameLicense(int $userId, int $gameId): void
+    {
+        if (!self::tableExists('user_game_licenses')) {
+            return;
+        }
+
+        $stmt = Database::pdo()->prepare('DELETE FROM user_game_licenses WHERE user_id = :user_id AND game_id = :game_id');
+        $stmt->execute([
+            'user_id' => $userId,
+            'game_id' => $gameId,
+        ]);
+    }
+
+    public static function deleteUserGameOauthTokens(int $userId, int $gameId): void
+    {
+        if (!self::tableExists('game_oauth_tokens')) {
+            return;
+        }
+
+        $stmt = Database::pdo()->prepare('DELETE FROM game_oauth_tokens WHERE user_id = :user_id AND game_id = :game_id');
         $stmt->execute([
             'user_id' => $userId,
             'game_id' => $gameId,

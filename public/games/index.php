@@ -63,9 +63,14 @@ if (request_is_post()) {
             ActivityLogger::info('game_obtained', ['user_id' => $userId, 'game_id' => $gameId]);
             flash('message', 'Juego agregado a tu biblioteca.');
         } elseif ($action === 'unlink') {
-            Game::unlinkUser((int) $userId, $gameId, true);
+            $build = GameBuild::latestForGame($gameId);
+            $purgeGameData = $build !== null && (($build['delivery_type'] ?? 'zip') === 'external_platform');
+            Game::unlinkUser((int) $userId, $gameId, $purgeGameData);
             ActivityLogger::info('game_unlinked', ['user_id' => $userId, 'game_id' => $gameId]);
-            flash('message', 'Juego desvinculado. Se borraron tus datos de ese juego en la plataforma.');
+            flash('message', $purgeGameData
+                ? 'Juego desvinculado. Se borraron tus datos de ese juego en la plataforma.'
+                : 'Juego quitado de tu biblioteca. Tus datos del juego se conservaron.'
+            );
         } else {
             throw new RuntimeException('Accion no valida.');
         }
@@ -117,8 +122,10 @@ Page::header(t('nav.games'));
     $endpoints = Game::decodeJson($selectedGame['endpoints_json'] ?? null);
     $cdn = Game::decodeJson($selectedGame['cdn_json'] ?? null);
     $selectedBuildIsZip = $selectedBuild && (($selectedBuild['delivery_type'] ?? 'zip') === 'zip') && !empty($selectedBuild['download_url']);
-    $selectedBuildIsExternal = $selectedBuild && (($selectedBuild['delivery_type'] ?? 'zip') === 'external_platform') && !empty($selectedBuild['launch_url']);
+    $selectedBuildUsesExternalLauncher = $selectedBuild && (($selectedBuild['delivery_type'] ?? 'zip') === 'external_platform');
+    $selectedBuildIsExternal = $selectedBuildUsesExternalLauncher && (!empty($selectedBuild['launch_url']) || !empty($selectedBuild['platform_app_id']));
     $selectedCanDownloadFromWeb = !$clientEnabled && $selectedBuildIsZip;
+    $selectedUnlinkLabel = $selectedBuildUsesExternalLauncher ? 'Desvincular y borrar datos' : 'Quitar de mi biblioteca';
     ?>
     <section class="game-detail">
         <article class="panel">
@@ -127,9 +134,9 @@ Page::header(t('nav.games'));
                     <h2><?= e($selectedGame['name']) ?></h2>
                     <p class="muted">
                         <code><?= e($selectedGame['slug']) ?></code>
-                        Â· <?= e(Game::statusLabel((string) $selectedGame['status'])) ?>
+                        &middot; <?= e(Game::statusLabel((string) $selectedGame['status'])) ?>
                         <?php if (!empty($selectedGame['current_version'])): ?>
-                            Â· Version <?= e($selectedGame['current_version']) ?>
+                            &middot; Version <?= e($selectedGame['current_version']) ?>
                         <?php endif; ?>
                     </p>
                 </div>
@@ -170,7 +177,7 @@ Page::header(t('nav.games'));
                         <input type="hidden" name="action" value="unlink">
                         <input type="hidden" name="game_id" value="<?= e($selectedGame['id']) ?>">
                         <input type="hidden" name="slug" value="<?= e($selectedGame['slug']) ?>">
-                        <button type="submit" class="button button--secondary">Desvincular y borrar datos</button>
+                        <button type="submit" class="button button--secondary"><?= e($selectedUnlinkLabel) ?></button>
                     </form>
                 <?php elseif ($canManuallyLinkGames): ?>
                     <form method="post">

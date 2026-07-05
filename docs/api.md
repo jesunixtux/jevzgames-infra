@@ -781,7 +781,7 @@ Consulta el repositorio de releases del launcher configurado desde `/client/` po
 
 ```json
 {
-  "current_version": "0.1.10-beta",
+  "current_version": "0.1.11-beta",
   "os": "windows"
 }
 ```
