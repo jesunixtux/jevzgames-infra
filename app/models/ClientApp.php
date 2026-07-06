@@ -417,24 +417,50 @@ final class ClientApp
 
     public static function userPayload(array $user): array
     {
+        $avatar = self::avatarPayload((int) $user['id']);
+
         return [
             'id' => (int) $user['id'],
             'username' => (string) $user['username'],
             'email' => (string) $user['email'],
             'display_name' => (string) ($user['display_name'] ?? $user['username']),
             'status' => (string) ($user['status'] ?? 'active'),
+            'avatar_path' => $avatar['avatar_path'],
+            'avatar_url' => $avatar['avatar_url'],
         ];
     }
 
     public static function sessionUserPayload(array $session): array
     {
+        $avatar = self::avatarPayload((int) $session['user_id']);
+
         return [
             'id' => (int) $session['user_id'],
             'username' => (string) $session['username'],
             'email' => (string) $session['email'],
             'display_name' => (string) ($session['display_name'] ?? $session['username']),
             'status' => (string) ($session['user_status'] ?? 'active'),
+            'avatar_path' => $avatar['avatar_path'],
+            'avatar_url' => $avatar['avatar_url'],
         ];
+    }
+
+    private static function avatarPayload(int $userId): array
+    {
+        try {
+            $profile = PublicProfile::findByUserId($userId);
+            $avatarPath = (string) ($profile['avatar_path'] ?? '');
+
+            return [
+                'avatar_path' => $avatarPath,
+                'avatar_url' => PublicProfile::avatarUrl($avatarPath),
+            ];
+        } catch (\Throwable) {
+            return [
+                'avatar_path' => '',
+                'avatar_url' => '',
+            ];
+        }
     }
 
     public static function presencePayload(array $presence): array
